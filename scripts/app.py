@@ -97,7 +97,9 @@ def parse_reply(raw):
 
 
 def llm_messages(friend, messages):
-    turns = llm.load_config().get("history_turns", 20)
+    cfg = llm.load_config()
+    # Ollama 的上下文只有 4096，角色資料就佔了一半多，所以可以按模型設定記住幾輪
+    turns = cfg["providers"][cfg["active"]].get("history_turns", cfg.get("history_turns", 20))
     out = [{"role": "system", "content": system_prompt(friend)}]
     for m in messages[-turns * 2:]:
         if m["role"] == "user":

@@ -5,7 +5,8 @@
       "base_url": "http://127.0.0.1:11434/v1",
       "model": "qwen3:4b-instruct",
       "max_tokens": 400,
-      "temperature": 0.8
+      "temperature": 0.8,
+      "history_turns": 8
     },
     "deepseek": {
       "base_url": "https://api.deepseek.com/v1",
