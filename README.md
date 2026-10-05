@@ -106,6 +106,18 @@ batch size 主要影響速度，對效果影響很小。影響效果的主要是
 - GPT 第 15 輪的 top-3 準確率是 0.88，可能有點過擬合；亂念或吞字的話改試第 10 輪
 - 其他輪數的模型還在 GPT-SoVITS 目錄的 `SoVITS_weights_v2ProPlus/`、`GPT_weights_v2ProPlus/`
 
+### 打字試聽（不用 WebUI）
+
+```
+python scripts/tts.py
+```
+
+- 自動在背景啟動 GPT-SoVITS 的 `api_v2.py`，載入 `Models/Freminet/` 的模型（第一句約 30 秒，之後每句幾秒）
+- 打一句按 Enter 就念出來，音頻存在 `tts_output/`（不放進 git）
+- 指定情緒：`/angry 你怎么能这样！` 或 `/生氣 你怎么能这样！`，每種情緒用 `model.json` 裏的第一段參考音頻
+- 輸入 `q` 離開，會一併關掉 API
+- 只用 Python 標準庫，播放用 `winsound`，所以只能在 Windows 用
+
 ### 出問題時
 
 | 問題 | 解決方法 |

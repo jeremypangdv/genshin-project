@@ -1,2 +1,4 @@
 freminet_chinese/
 Models/
+tts_output/
+__pycache__/
