@@ -80,10 +80,12 @@
    - 參考音頻：挑一段 3–10 秒、語氣平穩、沒有喘氣或叫聲的原聲，文本從 `metadata.csv` 查
    - 試不同輪數保存下來的模型組合，挑效果最好的
 
-6. **匯出模型**：把選好的模型複製到 `Models/`（不放進 git，見 `.gitignore`）
+6. **匯出模型**：把選好的模型複製到 `Models/Freminet/`（不放進 git，見 `.gitignore`）
    - SoVITS：GPT-SoVITS 目錄下 `SoVITS_weights_v2ProPlus/Freminet_e*_s*.pth`
    - GPT：GPT-SoVITS 目錄下 `GPT_weights_v2ProPlus/Freminet-e*.ckpt`
-   - 參考音頻和它的文本也一起放進去
+   - 參考音頻存成 `ref.wav`，版本、檔名、參考文本寫在 `model.json`
+
+**也可以不用 WebUI**：`train_freminet.ipynb` 用同樣的參數執行 1A、1B 和匯出（1C 推理測試還是用 WebUI）。
 
 batch size 主要影響速度，對效果影響很小。影響效果的主要是資料品質、GPT 輪數和參考音頻。
 
