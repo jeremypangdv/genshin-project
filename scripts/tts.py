@@ -104,7 +104,8 @@ def find_weights(version):
     return by_epoch(gpt), by_epoch(sovits)
 
 
-def speak(text, ref):
+def synthesize(text, ref):
+    """Make a wav in tts_output/ and return its path; raises RuntimeError on failure."""
     body = {
         "text": text,
         "text_lang": "zh",
@@ -119,11 +120,19 @@ def speak(text, ref):
     try:
         wav = urllib.request.urlopen(req, timeout=300).read()
     except urllib.error.HTTPError as e:
-        print("合成失敗：", e.read().decode("utf-8", "replace"))
-        return
+        raise RuntimeError(e.read().decode("utf-8", "replace")) from None
     OUTPUT_DIR.mkdir(exist_ok=True)
-    path = OUTPUT_DIR / f"{datetime.now():%Y%m%d-%H%M%S}.wav"
+    path = OUTPUT_DIR / f"{datetime.now():%Y%m%d-%H%M%S-%f}.wav"
     path.write_bytes(wav)
+    return path
+
+
+def speak(text, ref):
+    try:
+        path = synthesize(text, ref)
+    except RuntimeError as e:
+        print("合成失敗：", e)
+        return
     winsound.PlaySound(str(path), winsound.SND_FILENAME)
 
 

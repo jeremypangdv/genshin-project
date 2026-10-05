@@ -12,8 +12,9 @@
   1. GPT：用同一句話試 e5、e10、e15，選最好的（`/gpt e10`）
   2. SoVITS：用選好的 GPT，試 e4、e8，選最好的（`/sovits e4`）
   3. 最好的 GPT + 最好的 SoVITS 一起用，填回 notebook 第 8 部分重新匯出
-- [ ] 寫角色提示詞（從官方台詞挑範例）
-- [ ] 寫聊天程式（LLM API + GPT-SoVITS）
+- [ ] 寫角色提示詞（從官方台詞挑範例）：`characters/freminet.md` 目前是草稿
+- [x] 寫聊天程式（LLM + GPT-SoVITS）：`python scripts/app.py`，見[聊天 App](#聊天-app)
+- [ ] 換成 API（DeepSeek / Claude）調整角色效果
 
 ## 資料
 
@@ -151,7 +152,30 @@ python scripts/chatbox.py
 | `No module named 'text'` | 整合包搬過位置，`runtime\Lib\site-packages\users.pth` 還是舊路徑；notebook 會自動修正，或者開一次 WebUI |
 | 雜音、電音 | 換其他輪數的 SoVITS 模型，或換參考音頻 |
 
-## 之後：聊天程式（語音訓練完再做）
+## 聊天 App
+
+```
+python scripts/app.py
+```
+
+打開 http://127.0.0.1:5000 。類似 WhatsApp：左邊點「菲米尼」，傳訊息，他用語音訊息回覆；按播放時，語音下面會跟着進度顯示字幕。
+
+| 檔案 | 作用 |
+|---|---|
+| `config/llm.json` | 用哪個 LLM。改 `active` 就能換：`ollama`（本地測試）、`deepseek`、`claude` |
+| `characters/freminet.md` | 角色設定和個性（目前是草稿）。改完不用重開 app，下一則訊息就會用新的 |
+| `scripts/llm.py` | 呼叫 LLM，三個都用 OpenAI 格式的介面 |
+| `scripts/app.py` | 伺服器：LLM 回覆 → 拆出情緒 → GPT-SoVITS 念出來 |
+| `app/index.html` | 聊天介面 |
+| `chats/` | 聊天記錄（不放進 git）；介面右上角垃圾桶可以清除 |
+
+- **本地測試用 `qwen3:4b-instruct`**（Ollama，2.5GB）。不要用 `qwen3:4b`：它會先「思考」，Ollama 的 OpenAI 介面關不掉，回覆會變成空的
+- 和 GPT-SoVITS 一起用大約佔 5.5GB 顯存；第一則訊息約 30 秒，之後每則約 5 秒
+- 模型回覆第一行是情緒標籤（例如 `[shy]`），用來選參考音頻；（笑）、*低頭* 這類動作描寫會自動拿掉，不會念出來
+- 換 API：設定環境變數 `DEEPSEEK_API_KEY` 或 `ANTHROPIC_API_KEY`，再把 `active` 改成 `deepseek` 或 `claude`
+- 小模型只用來測流程，角色像不像要換成 API 之後再調
+
+## 聊天程式的規劃
 
 ### 架構
 

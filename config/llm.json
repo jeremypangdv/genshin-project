@@ -1,0 +1,26 @@
+{
+  "active": "ollama",
+  "providers": {
+    "ollama": {
+      "base_url": "http://127.0.0.1:11434/v1",
+      "model": "qwen3:4b-instruct",
+      "max_tokens": 400,
+      "temperature": 0.8
+    },
+    "deepseek": {
+      "base_url": "https://api.deepseek.com/v1",
+      "model": "deepseek-chat",
+      "api_key_env": "DEEPSEEK_API_KEY",
+      "max_tokens": 300,
+      "temperature": 1.0
+    },
+    "claude": {
+      "base_url": "https://api.anthropic.com/v1",
+      "model": "claude-sonnet-5-5",
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "max_tokens": 300,
+      "temperature": 0.8
+    }
+  },
+  "history_turns": 20
+}
