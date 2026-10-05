@@ -6,8 +6,9 @@
 
 - [x] 下載 Freminet 中文語音資料
 - [x] 整理成 GPT-SoVITS 訓練格式（`freminet.list`）
-- [ ] 訓練語音模型（v2ProPlus，本地）
-- [ ] 挑選參考音頻
+- [x] 訓練語音模型（v2ProPlus，本地，2026-10-05，見[訓練結果](#訓練結果)）
+- [ ] 挑選參考音頻（已按情緒選好 37 段候選，還要試聽確定每種情緒用哪段）
+- [ ] 試聽模型，確定用哪個輪數
 - [ ] 寫角色提示詞（從官方台詞挑範例）
 - [ ] 寫聊天程式（LLM API + GPT-SoVITS）
 
@@ -91,6 +92,20 @@ batch size 主要影響速度，對效果影響很小。影響效果的主要是
 
 預計時間：1–2 小時。
 
+### 訓練結果
+
+2026-10-05 用 `train_freminet.ipynb` 訓練，參數照上面的方案（batch size 2）。
+
+| 步驟 | 時間 | 結果 |
+|---|---|---|
+| 1A 資料格式化 | 約 4 分鐘 | 353 段全部處理完 |
+| SoVITS 8 輪 | 每輪約 5 分鐘 | `Freminet_e4_s700.pth`、`Freminet_e8_s1400.pth` |
+| GPT 15 輪 | 每輪約 1 分鐘 | `Freminet-e5.ckpt`、`Freminet-e10.ckpt`、`Freminet-e15.ckpt`；GPT 訓練時去掉了 18 段語速太快或太慢的音頻，實際用 335 段 |
+
+- 已匯出到 `Models/Freminet/`：SoVITS 第 8 輪 + GPT 第 15 輪
+- GPT 第 15 輪的 top-3 準確率是 0.88，可能有點過擬合；亂念或吞字的話改試第 10 輪
+- 其他輪數的模型還在 GPT-SoVITS 目錄的 `SoVITS_weights_v2ProPlus/`、`GPT_weights_v2ProPlus/`
+
 ### 出問題時
 
 | 問題 | 解決方法 |
@@ -98,6 +113,8 @@ batch size 主要影響速度，對效果影響很小。影響效果的主要是
 | 爆顯存（OOM） | ① batch size 調成 1 → ② 去掉超過 30 秒的 5 段長音頻 → ③ 改用 v2Pro |
 | 聲音不像 | 換參考音頻，或 SoVITS 多訓練幾輪 |
 | 亂念、重複、吞字 | 換用輪數比較少的 GPT 模型 |
+| 訓練中途被停止（記憶體不足） | 關掉瀏覽器等程式再重跑；SoVITS 會從最近保存的輪數接着訓練。SoVITS 讀資料固定用 5 個程序（寫死在整合包的 `s2_train.py`），GPT 在 notebook 裏已調成 1 個 |
+| `No module named 'text'` | 整合包搬過位置，`runtime\Lib\site-packages\users.pth` 還是舊路徑；notebook 會自動修正，或者開一次 WebUI |
 | 雜音、電音 | 換其他輪數的 SoVITS 模型，或換參考音頻 |
 
 ## 之後：聊天程式（語音訓練完再做）
