@@ -147,7 +147,7 @@ python scripts/chatbox.py
 |---|---|
 | 爆顯存（OOM） | ① batch size 調成 1 → ② 去掉超過 30 秒的 5 段長音頻 → ③ 改用 v2Pro |
 | 聲音不像 | 換參考音頻，或 SoVITS 多訓練幾輪 |
-| 亂念、重複、吞字 | 換用輪數比較少的 GPT 模型 |
+| 亂念、重複、吞字 | `tts.synthesize` 會逐句合成，某句短於每字 0.2 秒（訓練資料最快約 0.19）就重念，最多 3 次；「…」念的時候換成逗號。還是常吞字的話換用輪數比較少的 GPT 模型 |
 | 訓練中途被停止（記憶體不足） | 關掉瀏覽器等程式再重跑；SoVITS 會從最近保存的輪數接着訓練。SoVITS 讀資料固定用 5 個程序（寫死在整合包的 `s2_train.py`），GPT 在 notebook 裏已調成 1 個 |
 | `No module named 'text'` | 整合包搬過位置，`runtime\Lib\site-packages\users.pth` 還是舊路徑；notebook 會自動修正，或者開一次 WebUI |
 | 雜音、電音 | 換其他輪數的 SoVITS 模型，或換參考音頻 |

@@ -7,14 +7,17 @@ switch to another training epoch, or try another reference clip.
 Uses only the standard library; playback uses winsound, so Windows only.
 """
 
+import io
 import json
 import os
+import re
 import subprocess
 import sys
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import wave
 import winsound
 from datetime import datetime
 from pathlib import Path
@@ -104,26 +107,78 @@ def find_weights(version):
     return by_epoch(gpt), by_epoch(sovits)
 
 
-def synthesize(text, ref):
-    """Make a wav in tts_output/ and return its path; raises RuntimeError on failure."""
+# 吞字檢查：訓練資料裏菲米尼最快大約每字 0.19 秒，比這更短就是有字被跳過了
+MIN_SECONDS_PER_CHAR = 0.2
+RETRIES = 3
+SENTENCE = re.compile(r"[^。！？!?\n]+[。！？!?]*")
+SPOKEN = re.compile(r"[一-鿿A-Za-z0-9]")
+
+
+def split_sentences(text):
+    """Split into sentences; very short ones like 「唔…」 are joined to the next."""
+    out, carry = [], ""
+    for s in SENTENCE.findall(text):
+        s = carry + s.strip()
+        carry = ""
+        if len(SPOKEN.findall(s)) < 4:
+            carry = s
+        elif s:
+            out.append(s)
+    if carry:
+        if out:
+            out[-1] += carry
+        else:
+            out.append(carry)
+    return out
+
+
+def request_wav(text, ref):
     body = {
         "text": text,
         "text_lang": "zh",
         "ref_audio_path": str(MODEL_DIR / ref["audio"]),
         "prompt_text": ref["text"],
         "prompt_lang": "zh",
-        "text_split_method": "cut5",
+        "text_split_method": "cut1",
         "media_type": "wav",
     }
     req = urllib.request.Request(f"{API}/tts", data=json.dumps(body).encode("utf-8"),
                                  headers={"Content-Type": "application/json"})
     try:
-        wav = urllib.request.urlopen(req, timeout=300).read()
+        data = urllib.request.urlopen(req, timeout=300).read()
     except urllib.error.HTTPError as e:
         raise RuntimeError(e.read().decode("utf-8", "replace")) from None
+    with wave.open(io.BytesIO(data)) as w:
+        return w.getparams(), w.readframes(w.getnframes())
+
+
+def synthesize(text, ref):
+    """Make a wav in tts_output/ and return its path; raises RuntimeError on failure.
+
+    Each sentence is made on its own; one that comes out too short for its
+    length has skipped words, so it is made again (keeping the longest try).
+    """
+    params, parts = None, []
+    for sentence in split_sentences(text):
+        # 「…」很容易讓模型提早結束，念的時候換成逗號（字幕不受影響）
+        spoken = re.sub(r"[…]+|\.{3,}", "，", sentence).strip("，")
+        need = len(SPOKEN.findall(spoken)) * MIN_SECONDS_PER_CHAR
+        best = b""
+        for _ in range(RETRIES):
+            params, frames = request_wav(spoken, ref)
+            if len(frames) > len(best):
+                best = frames
+            if len(best) / (params.framerate * params.sampwidth * params.nchannels) >= need:
+                break
+        parts.append(best)
+    if not parts:
+        raise RuntimeError("沒有可以念的文字")
+    gap = b"\0" * int(params.framerate * 0.3) * params.sampwidth * params.nchannels
     OUTPUT_DIR.mkdir(exist_ok=True)
     path = OUTPUT_DIR / f"{datetime.now():%Y%m%d-%H%M%S-%f}.wav"
-    path.write_bytes(wav)
+    with wave.open(str(path), "wb") as w:
+        w.setparams(params)
+        w.writeframes(gap.join(parts))
     return path
 
 
