@@ -23,7 +23,8 @@ PROJECT = tts.PROJECT
 APP_DIR = PROJECT / "app"
 CHAT_DIR = PROJECT / "chats"
 CHARACTER_DIR = PROJECT / "characters"
-FRIENDS = {"freminet": {"name": "菲米尼", "avatar": "菲"}}
+# avatar 是沒有頭像圖片時顯示的字；image 放在 characters/ 裏
+FRIENDS = {"freminet": {"name": "菲米尼", "avatar": "菲", "image": "freminet.jpg"}}
 NAMES = {v: k for k, v in tts.ALIASES.items()}
 
 # 模型回覆的第一行是情緒標籤，例如 [happy] 或 【開心】
@@ -169,6 +170,11 @@ def send(friend):
         messages.append(msg)
         save_chat(friend, messages)
     return jsonify(msg)
+
+
+@app.get("/avatars/<name>")
+def avatar(name):
+    return send_from_directory(CHARACTER_DIR, name)
 
 
 @app.get("/audio/<name>")

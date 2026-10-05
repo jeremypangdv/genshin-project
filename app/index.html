@@ -42,6 +42,7 @@
   .friend .preview { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .avatar { width: 48px; height: 48px; border-radius: 50%; flex: none; display: grid; place-items: center;
     color: #fff; font-size: 20px; font-weight: 600; background: linear-gradient(135deg, #6fa8dc, #3d6e9e); }
+  .avatar.photo { background: center/cover no-repeat; color: transparent; }
   .avatar.small { width: 40px; height: 40px; font-size: 17px; }
   .side-foot { padding: 8px 14px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); }
 
@@ -175,6 +176,16 @@ function bars(seed) {
   });
 }
 
+function setAvatar(el, friend) {
+  el.textContent = friend.avatar;
+  if (!friend.image) return;
+  // 圖片不在（例如剛 clone 下來，圖片沒放進 git）就繼續顯示字
+  const url = `/avatars/${encodeURIComponent(friend.image)}`;
+  const img = new Image();
+  img.onload = () => { el.classList.add("photo"); el.style.backgroundImage = `url("${url}")`; };
+  img.src = url;
+}
+
 async function api(path, opts = {}) {
   const res = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
   const data = await res.json().catch(() => ({}));
@@ -210,7 +221,7 @@ function renderFriends() {
     el.innerHTML = `<div class="avatar"></div><div class="meta">
       <div class="row"><span class="name"></span><span class="time">${last ? clock(last.time) : ""}</span></div>
       <div class="preview"></div></div>`;
-    $(".avatar", el).textContent = f.avatar;
+    setAvatar($(".avatar", el), f);
     $(".name", el).textContent = f.name;
     $(".preview", el).textContent = preview;
     el.onclick = () => openChat(f);
@@ -232,7 +243,7 @@ async function openChat(friend) {
   const main = $("#main");
   main.innerHTML = "";
   main.append($("#chat-tpl").content.cloneNode(true));
-  $(".chat-head .avatar", main).textContent = friend.avatar;
+  setAvatar($(".chat-head .avatar", main), friend);
   $(".chat-head .name", main).textContent = friend.name;
   updateHeader();
   renderFriends();
@@ -295,7 +306,7 @@ function voiceBubble(el, m) {
     <div class="info"><span class="dur">0:00</span><span class="emotion">${emotion}</span></div>
     <span class="stamp" style="margin-top:-16px">${clock(m.time)}</span>
     <div class="sub" hidden><span class="said"></span><span class="rest"></span></div>`;
-  $(".player .avatar", el).textContent = state.current.avatar;
+  setAvatar($(".player .avatar", el), state.current);
   const sub = $(".sub", el), said = $(".said", el), rest = $(".rest", el);
   const text = m.text, wave = [...el.querySelectorAll(".wave i")];
   const showText = n => { said.textContent = text.slice(0, n); rest.textContent = text.slice(n); };

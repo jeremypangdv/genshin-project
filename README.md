@@ -162,6 +162,7 @@ python scripts/app.py
 
 | 檔案 | 作用 |
 |---|---|
+| `characters/freminet.jpg` | 頭像，從 `freminet profile/images.jpg` 裁出臉部。官方立繪有版權，不放進 git；沒有這張圖就顯示「菲」字 |
 | `config/llm.json` | 用哪個 LLM。改 `active` 就能換：`ollama`（本地測試）、`deepseek`、`claude` |
 | `characters/freminet.md` | 角色資料，每則訊息都會整份放進系統提示。改完不用重開 app，下一則訊息就會用新的 |
 | `scripts/llm.py` | 呼叫 LLM，三個都用 OpenAI 格式的介面 |
