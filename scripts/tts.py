@@ -2,7 +2,8 @@
 
 Starts GPT-SoVITS api_v2.py in the background with the exported model in
 Models/Freminet/, then reads lines from the keyboard and plays each one.
-Prefix a line with /<emotion> to pick a reference clip, e.g. "/angry ...".
+Lines starting with / are commands (/help lists them): pick an emotion,
+switch to another training epoch, or try another reference clip.
 Uses only the standard library; playback uses winsound, so Windows only.
 """
 
@@ -24,11 +25,22 @@ OUTPUT_DIR = PROJECT / "tts_output"
 GSV = Path(r"D:\characters\GPT-SoVITS-Rin\GPT-SoVITS-v2pro-20250604")
 PYTHON = GSV / "runtime" / "python.exe"
 API = "http://127.0.0.1:9880"
+EXP_NAME = "Freminet"
 
 ALIASES = {
     "平靜": "calm", "開心": "happy", "溫柔": "gentle", "難過": "sad", "害羞": "shy",
     "驚訝": "surprised", "嚴肅": "serious", "生氣": "angry", "緊急": "urgent",
 }
+
+HELP = """\
+打字按 Enter 就念出來。指令：
+  /情緒 文字        用某種情緒念，例如「/angry 你怎么能这样！」或「/生氣 你怎么能这样！」
+  /gpt              列出可用的 GPT 模型；/gpt e10 換成第 10 輪
+  /sovits           列出可用的 SoVITS 模型；/sovits e4 換成第 4 輪
+  /ref              顯示每種情緒目前用哪段參考音頻
+  /ref angry        列出生氣組的候選；/ref angry 2 改用第 2 段
+  /help             顯示這個說明
+  q                 離開（會顯示目前的選擇，方便記下來）"""
 
 
 def api_up():
@@ -74,11 +86,22 @@ def start_api(info):
     sys.exit(1)
 
 
-def use_weights(info):
-    # 9880 已經有 API 在跑時，換成我們的模型
-    for route, name in [("set_gpt_weights", info["gpt"]), ("set_sovits_weights", info["sovits"])]:
-        query = urllib.parse.urlencode({"weights_path": str(MODEL_DIR / name)})
+def set_weights(route, path):
+    query = urllib.parse.urlencode({"weights_path": str(path)})
+    try:
         urllib.request.urlopen(f"{API}/{route}?{query}", timeout=120)
+        return True
+    except urllib.error.HTTPError as e:
+        print("換模型失敗：", e.read().decode("utf-8", "replace"))
+        return False
+
+
+def find_weights(version):
+    """All saved epochs in the GPT-SoVITS weight folders, as {"e10": path}."""
+    gpt = {p.stem.split("-")[-1]: p for p in (GSV / f"GPT_weights_{version}").glob(f"{EXP_NAME}-e*.ckpt")}
+    sovits = {p.stem.split("_")[1]: p for p in (GSV / f"SoVITS_weights_{version}").glob(f"{EXP_NAME}_e*_s*.pth")}
+    by_epoch = lambda d: dict(sorted(d.items(), key=lambda kv: int(kv[0][1:])))
+    return by_epoch(gpt), by_epoch(sovits)
 
 
 def speak(text, ref):
@@ -104,33 +127,107 @@ def speak(text, ref):
     winsound.PlaySound(str(path), winsound.SND_FILENAME)
 
 
-def parse(line, refs, default):
-    if line.startswith("/"):
-        tag, _, text = line[1:].partition(" ")
-        emotion = ALIASES.get(tag, tag)
-        if emotion not in refs:
-            return None, line
-        return emotion, text.strip()
-    return default, line
+class Session:
+    def __init__(self, info):
+        self.refs = info["refs"]
+        self.default = info["default_emotion"]
+        self.gpt_all, self.sovits_all = find_weights(info["version"])
+        # 開始時用的是匯出的模型，從檔名找出是第幾輪
+        self.gpt = info["gpt"].rsplit("-", 1)[-1].removesuffix(".ckpt")
+        self.sovits = info["sovits"].split("_")[1]
+        self.pick = {emotion: 0 for emotion in self.refs}
+
+    def emotion_names(self):
+        return "、".join(f"{k}（{a}）" for a, k in ALIASES.items() if k in self.refs)
+
+    def cmd_weights(self, kind, arg):
+        options = self.gpt_all if kind == "gpt" else self.sovits_all
+        current = self.gpt if kind == "gpt" else self.sovits
+        if not arg:
+            label = "GPT" if kind == "gpt" else "SoVITS"
+            print(f"可用的 {label} 模型：" + "、".join(
+                f"{e}{'（目前）' if e == current else ''}" for e in options))
+            return
+        epoch = arg if arg.startswith("e") else f"e{arg}"
+        if epoch not in options:
+            print(f"沒有 {epoch}，可用：{'、'.join(options)}")
+            return
+        print(f"換成 {options[epoch].name}…", end="", flush=True)
+        route = "set_gpt_weights" if kind == "gpt" else "set_sovits_weights"
+        if set_weights(route, options[epoch]):
+            if kind == "gpt":
+                self.gpt = epoch
+            else:
+                self.sovits = epoch
+            print(" 完成")
+
+    def cmd_ref(self, args):
+        if not args:
+            for emotion, items in self.refs.items():
+                i = self.pick[emotion]
+                print(f"  {emotion}：第 {i + 1} 段 {Path(items[i]['audio']).stem}  {items[i]['text']}")
+            return
+        emotion = ALIASES.get(args[0], args[0])
+        if emotion not in self.refs:
+            print(f"沒有這種情緒，可用：{self.emotion_names()}")
+            return
+        items = self.refs[emotion]
+        if len(args) == 1:
+            for i, item in enumerate(items):
+                mark = "（目前）" if i == self.pick[emotion] else ""
+                print(f"  {i + 1}. {Path(item['audio']).stem}  {item['text']}{mark}")
+            return
+        if not args[1].isdigit() or not 1 <= int(args[1]) <= len(items):
+            print(f"請輸入 1 到 {len(items)}")
+            return
+        self.pick[emotion] = int(args[1]) - 1
+        print(f"{emotion} 改用第 {args[1]} 段：{items[self.pick[emotion]]['text']}")
+
+    def say(self, emotion, text):
+        t0 = time.time()
+        speak(text, self.refs[emotion][self.pick[emotion]])
+        print(f"  [{emotion} 第 {self.pick[emotion] + 1} 段 / GPT {self.gpt} / SoVITS {self.sovits}] {time.time() - t0:.1f}s")
+
+    def handle(self, line):
+        if not line.startswith("/"):
+            self.say(self.default, line)
+            return
+        word, _, rest = line[1:].partition(" ")
+        args = rest.split()
+        if word == "help":
+            print(HELP)
+        elif word in ("gpt", "sovits"):
+            self.cmd_weights(word, args[0] if args else "")
+        elif word == "ref":
+            self.cmd_ref(args)
+        elif ALIASES.get(word, word) in self.refs:
+            if rest.strip():
+                self.say(ALIASES.get(word, word), rest.strip())
+        else:
+            print(f"不認識的指令 /{word}，輸入 /help 看說明")
+
+    def summary(self):
+        print("\n目前的選擇：")
+        print(f"  GPT：{self.gpt}　SoVITS：{self.sovits}")
+        for emotion, items in self.refs.items():
+            print(f"  {emotion}：{Path(items[self.pick[emotion]]['audio']).stem}")
 
 
 def main():
     info = json.loads((MODEL_DIR / "model.json").read_text(encoding="utf-8"))
-    refs = info["refs"]
-    default = info["default_emotion"]
+    session = Session(info)
 
     proc = None
     if api_up():
         print("API 已經在執行，換成 Freminet 的模型…")
-        use_weights(info)
+        set_weights("set_gpt_weights", MODEL_DIR / info["gpt"])
+        set_weights("set_sovits_weights", MODEL_DIR / info["sovits"])
     else:
         proc = start_api(info)
 
-    names = "、".join(f"{k}（{a}）" for a, k in ALIASES.items() if k in refs)
-    print(f"\n輸入文字後按 Enter 就會念出來，音頻存在 {OUTPUT_DIR.name}/")
-    print("指定情緒：在前面加 /情緒，例如「/angry 你怎么能这样！」或「/生氣 你怎么能这样！」")
-    print(f"可用情緒：{names}，預設 {default}")
-    print("離開：輸入 q 或按 Ctrl+C\n")
+    print(f"\n{HELP}")
+    print(f"\n可用情緒：{session.emotion_names()}，預設 {session.default}")
+    print(f"音頻存在 {OUTPUT_DIR.name}/\n")
     try:
         while True:
             line = input("> ").strip()
@@ -138,18 +235,11 @@ def main():
                 continue
             if line.lower() in ("q", "quit", "exit"):
                 break
-            emotion, text = parse(line, refs, default)
-            if emotion is None:
-                print(f"沒有這種情緒，可用：{names}")
-                continue
-            if not text:
-                continue
-            t0 = time.time()
-            speak(text, refs[emotion][0])
-            print(f"  [{emotion}] {time.time() - t0:.1f}s")
+            session.handle(line)
     except (KeyboardInterrupt, EOFError):
         print()
     finally:
+        session.summary()
         if proc:
             proc.terminate()
             print("已關閉 API")

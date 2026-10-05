@@ -8,7 +8,10 @@
 - [x] 整理成 GPT-SoVITS 訓練格式（`freminet.list`）
 - [x] 訓練語音模型（v2ProPlus，本地，2026-10-05，見[訓練結果](#訓練結果)）
 - [ ] 挑選參考音頻（已按情緒選好 37 段候選，還要試聽確定每種情緒用哪段）
-- [ ] 試聽模型，確定用哪個輪數
+- [ ] 試聽模型，確定用哪個輪數（**目前在做**，用 `python scripts/tts.py`）
+  1. GPT：用同一句話試 e5、e10、e15，選最好的（`/gpt e10`）
+  2. SoVITS：用選好的 GPT，試 e4、e8，選最好的（`/sovits e4`）
+  3. 最好的 GPT + 最好的 SoVITS 一起用，填回 notebook 第 8 部分重新匯出
 - [ ] 寫角色提示詞（從官方台詞挑範例）
 - [ ] 寫聊天程式（LLM API + GPT-SoVITS）
 
@@ -114,8 +117,17 @@ python scripts/tts.py
 
 - 自動在背景啟動 GPT-SoVITS 的 `api_v2.py`，載入 `Models/Freminet/` 的模型（第一句約 30 秒，之後每句幾秒）
 - 打一句按 Enter 就念出來，音頻存在 `tts_output/`（不放進 git）
-- 指定情緒：`/angry 你怎么能这样！` 或 `/生氣 你怎么能这样！`，每種情緒用 `model.json` 裏的第一段參考音頻
-- 輸入 `q` 離開，會一併關掉 API
+- 不用 WebUI 也能挑模型和參考音頻：
+
+  | 指令 | 作用 |
+  |---|---|
+  | `/angry 文字`、`/生氣 文字` | 用某種情緒念 |
+  | `/gpt`、`/gpt e10` | 列出 GPT 模型／換成第 10 輪 |
+  | `/sovits`、`/sovits e4` | 列出 SoVITS 模型／換成第 4 輪 |
+  | `/ref`、`/ref angry`、`/ref angry 2` | 顯示目前的參考音頻／列出生氣組候選／改用第 2 段 |
+  | `/help` | 說明 |
+
+- 輸入 `q` 離開，會顯示目前選的輪數和每種情緒的參考音頻（方便填回 notebook 第 8 部分），並關掉 API
 - 只用 Python 標準庫，播放用 `winsound`，所以只能在 Windows 用
 
 ### 出問題時
