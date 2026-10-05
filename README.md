@@ -176,37 +176,41 @@ python scripts/app.py
 
 - **本地測試用 `qwen3:4b-instruct`**（Ollama，2.5GB）。不要用 `qwen3:4b`：它會先「思考」，Ollama 的 OpenAI 介面關不掉，回覆會變成空的
 - Ollama 的上下文只有 4096 token，角色資料約佔 2400，所以 `ollama` 只記住最近 8 輪（`history_turns`）；角色資料再加長的話要再調低
-- 和 GPT-SoVITS 一起用大約佔 5.5GB 顯存；第一則訊息約 30 秒，之後每則約 5 秒
+- 和 GPT-SoVITS 一起用大約佔 5.5GB 顯存
+- 速度：開 app 後要等約 30 秒載入語音模型；之後短回覆約 5 秒，5 句左右的長回覆約 13 秒（逐句合成，吞字還要重念）
 - 模型回覆第一行是情緒標籤（例如 `[shy]`），用來選參考音頻；（笑）、*低頭* 這類動作描寫會自動拿掉，不會念出來
 - 換 API：設定環境變數 `DEEPSEEK_API_KEY` 或 `ANTHROPIC_API_KEY`，再把 `active` 改成 `deepseek` 或 `claude`
 - 小模型只用來測流程，角色像不像要換成 API 之後再調
 
 ## 聊天程式的規劃
 
+開始寫 app 前的規劃，每項後面註明現在的狀況。
+
 ### 架構
 
 ```
-輸入文字 → LLM API（生成 Freminet 的回覆）→ 本地 GPT-SoVITS api_v2.py（念出來）→ 播放
+輸入文字 → LLM（生成 Freminet 的回覆和情緒）→ 本地 GPT-SoVITS api_v2.py（逐句念出來）→ 語音訊息
 ```
 
 ### LLM
 
-- **用 API，不用本地模型**：6GB 顯存要留給 GPT-SoVITS，本地小模型角色扮演效果不好
+- **正式用 API**：6GB 顯存要留給 GPT-SoVITS，本地小模型角色扮演效果不好
+- 現在先用本地 Ollama（`qwen3:4b-instruct`）測流程，換 API 只要改 `config/llm.json`
 - 選項：
-  - **Claude Sonnet 5.5**：角色最穩定，effort 設 `low`，開 prompt caching
+  - **Claude Sonnet 5.5**：角色最穩定（設定已經寫在 `config/llm.json`；effort、prompt caching 還沒做）
   - **DeepSeek**：便宜，中文好，可以先用來開發測試
-- 角色像不像主要看提示詞：從 353 句官方台詞挑一些作為說話風格範例
+- 角色像不像主要看提示詞：已經從 353 句官方台詞挑了範例，寫在 `characters/freminet.md`
 
 ### 控制花費
 
 - 只充少量金額（例如 $5），**不要開自動充值**
 - 在 Console 設每月花費上限
-- 程式裏限制 `max_tokens`、統計花費，超過上限自動停止
-- 開發時先用假的回覆測試整個流程，確定沒問題再接真 API
+- 程式裏限制 `max_tokens`（已做，在 `config/llm.json`）；統計花費、超過上限自動停止（還沒做）
+- 開發時先用本地模型測試整個流程（已做），確定沒問題再接真 API
 
 ### 速度
 
-- **邊生成邊播放**：LLM 串流輸出，每完成一句就送去 GPT-SoVITS，第一句生成好就開始播放
+- ~~邊生成邊播放~~：改成語音訊息的設計，整則念好才出現，所以沒有做
 - GPT-SoVITS 用 `api_v2.py`，模型常駐、開半精度
 - 還是太慢才考慮雲端 GPU（AutoDL、RunPod、Vast.ai、Modal）
 
