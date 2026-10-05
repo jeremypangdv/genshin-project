@@ -130,6 +130,16 @@ python scripts/tts.py
 - 輸入 `q` 離開，會顯示目前選的輪數和每種情緒的參考音頻（方便填回 notebook 第 8 部分），並關掉 API
 - 只用 Python 標準庫，播放用 `winsound`，所以只能在 Windows 用
 
+### 聊天視窗
+
+```
+python scripts/chatbox.py
+```
+
+- 打字按 Enter 就用菲米尼的聲音念出來，用 `Models/Freminet/` 匯出的模型（目前 GPT e15 + SoVITS e8）
+- 句子前面加情緒：`（生氣）你怎么能这样！`，也可以用 `(angry)` 或 `/angry`；不加就是平靜
+- 關掉視窗會一併關掉 API
+
 ### 出問題時
 
 | 問題 | 解決方法 |
