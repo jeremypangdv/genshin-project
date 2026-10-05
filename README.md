@@ -85,7 +85,7 @@
    - GPT：GPT-SoVITS 目錄下 `GPT_weights_v2ProPlus/Freminet-e*.ckpt`
    - 參考音頻存成 `ref.wav`，版本、檔名、參考文本寫在 `model.json`
 
-**也可以不用 WebUI**：`train_freminet.ipynb` 用同樣的參數執行 1A、1B 和匯出（1C 推理測試還是用 WebUI）。
+**也可以不用 WebUI**：`train_freminet.ipynb` 用同樣的參數執行 1A、1B 和匯出，可以直接全部執行（用最後一輪的模型和預設參考音頻）。想挑其他輪數再用 WebUI 的 1C 試聽。
 
 batch size 主要影響速度，對效果影響很小。影響效果的主要是資料品質、GPT 輪數和參考音頻。
 
