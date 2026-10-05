@@ -7,14 +7,18 @@
 - [x] 下載 Freminet 中文語音資料
 - [x] 整理成 GPT-SoVITS 訓練格式（`freminet.list`）
 - [x] 訓練語音模型（v2ProPlus，本地，2026-10-05，見[訓練結果](#訓練結果)）
-- [ ] 挑選參考音頻（已按情緒選好 37 段候選，還要試聽確定每種情緒用哪段）
-- [ ] 試聽模型，確定用哪個輪數（**目前在做**，用 `python scripts/tts.py`）
-  1. GPT：用同一句話試 e5、e10、e15，選最好的（`/gpt e10`）
-  2. SoVITS：用選好的 GPT，試 e4、e8，選最好的（`/sovits e4`）
-  3. 最好的 GPT + 最好的 SoVITS 一起用，填回 notebook 第 8 部分重新匯出
-- [x] 寫角色資料：`characters/freminet.md`（bilibili wiki + 353 句官方語音整理：身世、個性、喜好、佩伊、對其他角色的看法、台詞範例）
-- [x] 寫聊天程式（LLM + GPT-SoVITS）：`python scripts/app.py`，見[聊天 App](#聊天-app)
-- [ ] 換成 API（DeepSeek / Claude）調整角色效果
+- [ ] 挑選參考音頻（已按情緒選好 37 段候選，目前每種情緒都用第一段，還要試聽確定）
+- [ ] 確定用哪個輪數
+  - [x] GPT：用第 10 輪（第 15 輪聊天時常吞字，2026-10-05 換掉）
+  - [ ] SoVITS：目前用第 8 輪，還沒和第 4 輪比較（`python scripts/tts.py` 裏 `/sovits e4`）
+- [x] 寫角色資料：`characters/freminet.md`（bilibili wiki + 353 句官方語音整理：身世、個性、喜好、佩伊、對其他角色的看法、情緒指引、台詞範例）
+- [x] 聊天 App（**可以用了**，雙擊 `start_chat.bat`，見[聊天 App](#聊天-app)）
+  - 類似 WhatsApp，菲米尼用語音訊息回覆，播放時顯示字幕，頭像用他的照片
+  - 他會自己選情緒（9 種），用對應的參考音頻念
+  - 聊天記錄會保存；吞字會自動重念
+  - 目前用本地的 `qwen3:4b-instruct` 測試
+- [ ] 換成 API（DeepSeek / Claude）調整角色效果（**下一步**）
+- [ ] 可以考慮：長期記憶（現在只記得最近 8 輪，換 API 後 20 輪）
 
 ## 資料
 
@@ -106,7 +110,7 @@ batch size 主要影響速度，對效果影響很小。影響效果的主要是
 | SoVITS 8 輪 | 每輪約 5 分鐘 | `Freminet_e4_s700.pth`、`Freminet_e8_s1400.pth` |
 | GPT 15 輪 | 每輪約 1 分鐘 | `Freminet-e5.ckpt`、`Freminet-e10.ckpt`、`Freminet-e15.ckpt`；GPT 訓練時去掉了 18 段語速太快或太慢的音頻，實際用 335 段 |
 
-- 已匯出到 `Models/Freminet/`：SoVITS 第 8 輪 + GPT 第 15 輪
+- 已匯出到 `Models/Freminet/`：SoVITS 第 8 輪 + GPT 第 10 輪（原本用第 15 輪，聊天時常吞字，2026-10-05 換成第 10 輪；第 15 輪的檔案還留在資料夾裏）
 - GPT 第 15 輪的 top-3 準確率是 0.88，可能有點過擬合；亂念或吞字的話改試第 10 輪
 - 其他輪數的模型還在 GPT-SoVITS 目錄的 `SoVITS_weights_v2ProPlus/`、`GPT_weights_v2ProPlus/`
 
@@ -137,7 +141,7 @@ python scripts/tts.py
 python scripts/chatbox.py
 ```
 
-- 打字按 Enter 就用菲米尼的聲音念出來，用 `Models/Freminet/` 匯出的模型（目前 GPT e15 + SoVITS e8）
+- 打字按 Enter 就用菲米尼的聲音念出來，用 `Models/Freminet/` 匯出的模型（目前 GPT e10 + SoVITS e8）
 - 句子前面加情緒：`（生氣）你怎么能这样！`，也可以用 `(angry)` 或 `/angry`；不加就是平靜
 - 關掉視窗會一併關掉 API
 
