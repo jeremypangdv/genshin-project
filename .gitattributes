@@ -1,0 +1,2 @@
+# cmd can jump to the wrong line in .bat files with LF endings, so store them as CRLF
+*.bat -text
