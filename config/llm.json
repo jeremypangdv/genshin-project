@@ -9,6 +9,14 @@
       "temperature": 0.8,
       "history_turns": 8
     },
+    "server": {
+      "base_url": "http://192.168.1.100:11434/v1",
+      "model": "qwen3:14b",
+      "max_tokens": 400,
+      "temperature": 0.7,
+      "history_turns": 12,
+      "no_think": true
+    },
     "deepseek": {
       "base_url": "https://api.deepseek.com/v1",
       "model": "deepseek-chat",

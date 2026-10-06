@@ -55,6 +55,9 @@ def call(name, messages):
     p = load_config()["providers"][name]
     if p.get("history_turns"):
         messages = trim(messages, p["history_turns"])
+    if p.get("no_think") and messages and messages[0]["role"] == "system":
+        # Qwen3 混合模型看到 /no_think 就不思考，不然會花光 max_tokens 回覆變空白
+        messages = [{**messages[0], "content": messages[0]["content"] + "\n/no_think"}] + messages[1:]
     headers = {"Content-Type": "application/json"}
     if p.get("api_key_env"):
         key = os.environ.get(p["api_key_env"])
@@ -76,7 +79,7 @@ def call(name, messages):
     except urllib.error.HTTPError as e:
         raise RuntimeError(f"{name} 回傳錯誤：{e.read().decode('utf-8', 'replace')}") from None
     except urllib.error.URLError as e:
-        hint = "（Ollama 有沒有開？）" if name == "ollama" else ""
+        hint = {"ollama": "（Ollama 有沒有開？）", "server": "（另一部電腦的 start_server.bat 有沒有開？IP 對不對？）"}.get(name, "")
         raise RuntimeError(f"連不上 {name}：{e.reason}{hint}") from None
     text = data["choices"][0]["message"].get("content") or ""
     return THINK.sub("", text).strip()
