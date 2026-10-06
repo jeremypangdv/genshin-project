@@ -230,6 +230,10 @@ python scripts/app.py
 
 想換模型改兩個檔案 cell 1 的 `MODEL`（兩個要一樣）。
 
+- Ollama 裝在其他磁碟也可以：程式先從 PATH 找，找不到才看預設位置；cell 1 會印出找到的位置。剛裝完要重開 VS Code 才讀到新的 PATH
+- 模型預設存在 C 槽（`C:\Users\<你>\.ollama\models`），就算 Ollama 裝在 D 槽也一樣
+- 防火牆只要開一次，重開機不會消失；重新安裝 Ollama 到不同位置才要再開
+
 這部電腦的 `config/llm.json`：`server.base_url` 填那部的 IP，`active` 改成 `server`（只改一次）。
 
 之後每次：先在那部跑 `start_server.ipynb`，再開這部的 `start_chat.bat`。順序反了的話 LLM 預熱會失敗，第一則訊息要多等十幾秒載入。
@@ -245,6 +249,8 @@ python scripts/app.py
 
 1. 兩部電腦都到 https://tailscale.com/download 裝 Tailscale，登入**同一個帳號**
 2. `start_server.ipynb` 會多顯示一行 Tailscale IP（`100.x.x.x`），填到 `server.base_url`。這個 IP 不會變，在家裏也可以一直用它
+
+每次用的時候，兩部電腦的 Tailscale 都要開着並顯示 Connected（預設開機自動啟動）。
 
 每部電腦在 Tailscale 都有自己的 IP，`base_url` 要填 **server 的**，不是聊天電腦自己的。登入同一個帳號就會自動加入，不用另外加裝置。
 
