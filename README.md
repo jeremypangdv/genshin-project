@@ -18,9 +18,9 @@
   - 聊天記錄會保存；吞字會自動重念
   - 目前用本地的 `qwen3:4b-instruct` 測試
 - [ ] 在另一部電腦（RTX 5060 8GB）跑 `qwen3:14b`，這部透過 Tailscale 連過去（**下一步**，2026-10-07 決定只用本地模型，不用 API，見 [LLM](#llm)）
-  - [x] 寫好 `server/install_server.bat` 和 `server/start_server.bat`
+  - [x] 寫好 `server/server.ipynb`（2026-10-07 從兩個 bat 檔改成 notebook）
   - [x] 這部電腦裝好 Tailscale（2026-10-07，這部的 IP 是 `100.90.10.112`）
-  - [ ] 那部電腦裝 Tailscale（同一個帳號），跑兩個 bat 檔
+  - [ ] 那部電腦裝 Tailscale（同一個帳號），跑 `server.ipynb`
   - [ ] 把那部的 Tailscale IP 填進 `config/llm.json`，`active` 改成 `server`，測試連線
   - [ ] 調角色效果
 - [x] 長期記憶：舊對話整理成摘要（見[聊天 App](#聊天-app)）
@@ -219,27 +219,33 @@ python scripts/app.py
 
 ### LLM 伺服器
 
-那部電腦只要 `server/` 的兩個檔案，不用裝 Python。從 GitHub 下載要用「Download raw file」。
+那部電腦只要 `server/server.ipynb` 一個檔案，用 VS Code 打開，由上而下按 ▶ 執行。
 
-前置條件：Windows 10/11、管理員帳號、C 槽 12GB 以上；電源設成插電時不睡眠。和聊天電腦同一個網絡，或者兩部都裝 Tailscale（見下面）。
+前置條件：Windows 10/11、管理員帳號、C 槽 12GB 以上；電源設成插電時不睡眠。裝好 Python，VS Code 裝好 Python 和 Jupyter 擴充功能。和聊天電腦同一個網絡，或者兩部都裝 Tailscale（見下面）。
 
-1. 雙擊 `install_server.bat`（只做一次）：裝 Ollama、下載 `qwen3:14b`（約 9GB）、開防火牆 11434 端口。想換模型改檔案開頭的 `MODEL`
-2. 每次用之前雙擊 `start_server.bat`：會顯示那部電腦的 IP，視窗保持開着，關掉就停止
-3. 這部電腦的 `config/llm.json`：`server.base_url` 填那部的 IP，`active` 改成 `server`（只改一次）
+| Cell | 做什麼 | 什麼時候跑 |
+|---|---|---|
+| 1. 設定 | 模型名稱、路徑。想換模型改 `MODEL` | 每次 |
+| 2. 安裝 Ollama | 從官網下載並安裝 | 第一次 |
+| 3. 下載模型 | `qwen3:14b`，約 9GB | 第一次 |
+| 4. 開防火牆 | 會彈出管理員視窗，按「是」 | 第一次 |
+| 5. 開伺服器 | 顯示 IP、載入模型、測試一句，然後一直運行；按 ■ 停止 | 每次 |
 
-之後每次：先開那部的 `start_server.bat`，再開這部的 `start_chat.bat`。順序反了的話 LLM 預熱會失敗，第一則訊息要多等十幾秒載入。
+這部電腦的 `config/llm.json`：`server.base_url` 填那部的 IP，`active` 改成 `server`（只改一次）。
+
+之後每次：先在那部跑 cell 1 和 5，再開這部的 `start_chat.bat`。順序反了的話 LLM 預熱會失敗，第一則訊息要多等十幾秒載入。
 
 - 防火牆規則只讓同一個網絡和 Tailscale（`100.64.0.0/10`）的電腦連入，不分私人／公用網絡（Windows 新連的 Wi-Fi 預設是公用）
-- 兩個 bat 檔只用英文：檔案裏有中文的話，cmd 會讀錯行。存進 git 時是 CRLF（`.gitattributes`），LF 的話 `goto` 可能跳錯
-- **Ollama 沒有密碼**：同一個 Wi-Fi 的人都能用模型、刪模型、看到聊天內容（沒加密）。只在家裏開，公共 Wi-Fi 不要開 `start_server.bat`
-- 路由器重開後 IP 可能會變，連不上就看 `start_server.bat` 顯示的 IP；想固定的話在路由器設 DHCP 保留，或者用 Tailscale 的 IP
-- 還沒在那部電腦實際跑過：安裝 Ollama、管理員權限、防火牆、14B 的速度、Tailscale 都還沒驗證
+- **直接關掉 VS Code 伺服器不會停**：要停就按 cell 5 的 ■
+- **Ollama 沒有密碼**：同一個 Wi-Fi 的人都能用模型、刪模型、看到聊天內容（沒加密）。只在家裏開，公共 Wi-Fi 不要開伺服器
+- 路由器重開後 IP 可能會變，連不上就看 cell 5 顯示的 IP；想固定的話在路由器設 DHCP 保留，或者用 Tailscale 的 IP
+- Ollama 的記錄在 `%TEMP%\ollama_server.log`
+- 在這部電腦測過 cell 1、3、5（用 `qwen3:4b-instruct`）；cell 2（Ollama 已經裝了）、cell 4（要管理員）、14B 的速度和 Tailscale 實際連線還沒驗證
 
 **兩部電腦不在同一個地方：用 Tailscale**
 
 1. 兩部電腦都到 https://tailscale.com/download 裝 Tailscale，登入**同一個帳號**
-2. 2026-10-07 之前跑過 `install_server.bat` 的話，再跑一次（防火牆規則才有 Tailscale；Ollama 和模型已經有，會跳過）
-3. `start_server.bat` 會多顯示一行 Tailscale IP（`100.x.x.x`），填到 `server.base_url`。這個 IP 不會變，在家裏也可以一直用它
+2. Cell 5 會多顯示一行 Tailscale IP（`100.x.x.x`），填到 `server.base_url`。這個 IP 不會變，在家裏也可以一直用它
 
 每部電腦在 Tailscale 都有自己的 IP，`base_url` 要填 **server 的**，不是聊天電腦自己的。登入同一個帳號就會自動加入，不用另外加裝置。
 
