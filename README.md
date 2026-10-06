@@ -17,9 +17,12 @@
   - 他會自己選情緒（9 種），用對應的參考音頻念
   - 聊天記錄會保存；吞字會自動重念
   - 目前用本地的 `qwen3:4b-instruct` 測試
-- [ ] 在另一部電腦（RTX 5060 8GB）跑 `qwen3:14b`，這部透過區域網絡連過去（**下一步**，2026-10-07 決定只用本地模型，不用 API，見 [LLM](#llm)）
+- [ ] 在另一部電腦（RTX 5060 8GB）跑 `qwen3:14b`，這部透過 Tailscale 連過去（**下一步**，2026-10-07 決定只用本地模型，不用 API，見 [LLM](#llm)）
   - [x] 寫好 `server/install_server.bat` 和 `server/start_server.bat`
-  - [ ] 在那部電腦安裝、測試連線，再調角色效果
+  - [x] 這部電腦裝好 Tailscale（2026-10-07，這部的 IP 是 `100.90.10.112`）
+  - [ ] 那部電腦裝 Tailscale（同一個帳號），跑兩個 bat 檔
+  - [ ] 把那部的 Tailscale IP 填進 `config/llm.json`，`active` 改成 `server`，測試連線
+  - [ ] 調角色效果
 - [x] 長期記憶：舊對話整理成摘要（見[聊天 App](#聊天-app)）
 
 ## 資料
@@ -237,6 +240,8 @@ python scripts/app.py
 1. 兩部電腦都到 https://tailscale.com/download 裝 Tailscale，登入**同一個帳號**
 2. 2026-10-07 之前跑過 `install_server.bat` 的話，再跑一次（防火牆規則才有 Tailscale；Ollama 和模型已經有，會跳過）
 3. `start_server.bat` 會多顯示一行 Tailscale IP（`100.x.x.x`），填到 `server.base_url`。這個 IP 不會變，在家裏也可以一直用它
+
+每部電腦在 Tailscale 都有自己的 IP，`base_url` 要填 **server 的**，不是聊天電腦自己的。登入同一個帳號就會自動加入，不用另外加裝置。
 
 有加密，只有登入你帳號的裝置連得到。**不要在路由器開端口轉發**：Ollama 沒有密碼，開了全世界都能用。
 
