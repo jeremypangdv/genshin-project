@@ -65,13 +65,16 @@ def warm_up():
             print(" 完成")
         except Exception as e:
             print(f" 失敗：{e}")
-    print("預熱 LLM…", end="", flush=True)
-    try:
-        # 用真的系統提示，Ollama 會把這段快取起來，第一則訊息就不用重新讀
-        llm.chat(llm_messages("freminet", []) + [{"role": "user", "content": "你好"}])
-        print(" 完成")
-    except RuntimeError as e:
-        print(f" 失敗：{e}")
+    cfg = llm.load_config()
+    # 後備的 LLM 也預熱，額度用完要切換時不用等它載入
+    for name in dict.fromkeys(filter(None, [cfg["active"], cfg.get("fallback")])):
+        print(f"預熱 LLM（{name}）…", end="", flush=True)
+        try:
+            # 用真的系統提示，Ollama 會把這段快取起來，第一則訊息就不用重新讀
+            llm.call(name, llm_messages("freminet", []) + [{"role": "user", "content": "你好"}])
+            print(" 完成")
+        except RuntimeError as e:
+            print(f" 失敗：{e}")
 
 
 @atexit.register

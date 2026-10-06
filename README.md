@@ -17,7 +17,11 @@
   - 他會自己選情緒（9 種），用對應的參考音頻念
   - 聊天記錄會保存；吞字會自動重念
   - 目前用本地的 `qwen3:4b-instruct` 測試
-- [ ] 換成 API（DeepSeek / Claude）調整角色效果（**下一步**）
+- [ ] 換成 API 調整角色效果（**下一步**，2026-10-06 決定用 Claude Sonnet 5.5，見 [LLM](#llm)；還沒買 key）
+  - [x] 舊對話整理成摘要，傳給 API 的記錄一次砍一半，讓快取能命中
+  - [x] API 出錯或額度用完時自動改用本地 qwen 回覆
+  - [ ] 統計花費、超過上限自動停止
+  - [ ] Claude 改用原生 Messages API，加 prompt caching、effort `low`（買 key 後做）
 - [x] 長期記憶：舊對話整理成摘要（見[聊天 App](#聊天-app)）
 
 ## 資料
@@ -185,6 +189,10 @@ python scripts/app.py
 - 速度：啟動（載入 + 預熱）約 1–2 分鐘；打開後短回覆約 5 秒，5 句左右的長回覆約 13 秒（逐句合成，吞字還要重念）
 - 模型回覆第一行是情緒標籤（例如 `[shy]`），用來選參考音頻；（笑）、*低頭* 這類動作描寫會自動拿掉，不會念出來
 - 換 API：設定環境變數 `DEEPSEEK_API_KEY` 或 `ANTHROPIC_API_KEY`，再把 `active` 改成 `deepseek` 或 `claude`
+- **後備模型**：`config/llm.json` 的 `fallback`（現在是 `ollama`）。`active` 出錯（額度用完、沒網絡、沒設 key）時，這則改用後備模型回覆，聊天介面不會顯示，只在黑色視窗印一行；下一則訊息又會先試 `active`
+  - 後備模型的 `history_turns` 比較小時，會自動只傳最近幾輪
+  - 啟動時後備模型也會預熱，切換時不用等載入
+  - `temperature` 只在 config 有寫才傳：Sonnet 5.5 不接受設定它，寫了會一直出錯
 - 小模型只用來測流程，角色像不像要換成 API 之後再調
 
 ## 聊天程式的規劃
@@ -201,9 +209,16 @@ python scripts/app.py
 
 - **正式用 API**：6GB 顯存要留給 GPT-SoVITS，本地小模型角色扮演效果不好
 - 現在先用本地 Ollama（`qwen3:4b-instruct`）測流程，換 API 只要改 `config/llm.json`
-- 選項：
-  - **Claude Sonnet 5.5**：角色最穩定（設定已經寫在 `config/llm.json`；effort、prompt caching 還沒做）
-  - **DeepSeek**：便宜，中文好，可以先用來開發測試
+- **決定用 Claude Sonnet 5.5**（2026-10-06）：目標是角色完全像菲米尼，只用一個 API 模型，扮演角色它最穩
+  - 價錢（每百萬 token）：輸入 $2、輸出 $10、快取讀取 $0.20
+  - 估算每則訊息：有快取約 $0.002–0.003，沒有約 $0.007；傳給 LLM 的內容有上限（約 5000 token），聊再久每則也不會變貴
+  - 重度使用（每天 300 則）有快取每月約 $20–25
+  - 要做：改用原生 Messages API（OpenAI 相容介面沒有 prompt caching）、effort 設 `low`、`history_turns` 可調到 10–12
+- 比較過但沒選：
+  - **GPT-6 Luna**（OpenAI）：便宜很多（$0.10 / $0.50），但風格偏簡潔，扮演角色可能比較平淡
+  - **DeepSeek V4 Flash**：便宜、中文好，但不用
+  - **OpenRouter 免費模型**：每天 50 次（累計充 $10 後 1000 次），模型常變，只適合測試
+- 後備：額度用完或出錯時用本地 `qwen3:4b-instruct`，見[聊天 App](#聊天-app)
 - 角色像不像主要看提示詞：已經從 353 句官方台詞挑了範例，寫在 `characters/freminet.md`
 
 ### 控制花費
@@ -211,6 +226,7 @@ python scripts/app.py
 - 只充少量金額（例如 $5），**不要開自動充值**
 - 在 Console 設每月花費上限
 - 程式裏限制 `max_tokens`（已做，在 `config/llm.json`）；統計花費、超過上限自動停止（還沒做）
+- 用完了也能繼續聊：自動改用本地 qwen（已做，`fallback`）
 - 開發時先用本地模型測試整個流程（已做），確定沒問題再接真 API
 
 ### 速度

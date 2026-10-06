@@ -3,6 +3,8 @@
 Which one is used is "active" in config/llm.json, so moving from the local
 test model to an API is a config change, not a code change. API keys come
 from the environment variable named by "api_key_env", never from the file.
+If the active one fails (no credit, no network) and "fallback" names another,
+the reply comes from that one instead, without the chat noticing.
 Uses only the standard library.
 """
 
@@ -29,8 +31,30 @@ def describe():
 
 def chat(messages):
     cfg = load_config()
-    name = cfg["active"]
-    p = cfg["providers"][name]
+    name, fallback = cfg["active"], cfg.get("fallback")
+    try:
+        return call(name, messages)
+    except RuntimeError as e:
+        if not fallback or fallback == name:
+            raise
+        # 只在黑色視窗留記錄，聊天介面不會顯示
+        print(f"{name} 失敗，這則改用 {fallback}：{e}")
+        return call(fallback, messages)
+
+
+def trim(messages, turns):
+    """Keep the system prompt and only the last `turns` turns, for models with a small context."""
+    head = [m for m in messages[:1] if m["role"] == "system"]
+    tail = messages[len(head):][-(turns * 2 + 1):]
+    while len(tail) > 1 and tail[0]["role"] != "user":
+        tail = tail[1:]
+    return head + tail
+
+
+def call(name, messages):
+    p = load_config()["providers"][name]
+    if p.get("history_turns"):
+        messages = trim(messages, p["history_turns"])
     headers = {"Content-Type": "application/json"}
     if p.get("api_key_env"):
         key = os.environ.get(p["api_key_env"])
@@ -41,8 +65,10 @@ def chat(messages):
         "model": p["model"],
         "messages": messages,
         "max_tokens": p.get("max_tokens", 300),
-        "temperature": p.get("temperature", 0.8),
     }
+    # Sonnet 5.5 不接受設定 temperature，所以只在 config 裏有寫的時候才傳
+    if "temperature" in p:
+        body["temperature"] = p["temperature"]
     req = urllib.request.Request(f"{p['base_url'].rstrip('/')}/chat/completions",
                                  data=json.dumps(body).encode("utf-8"), headers=headers)
     try:
