@@ -12,6 +12,7 @@ import json
 import re
 import threading
 import time
+import webbrowser
 from pathlib import Path
 
 from flask import Flask, abort, jsonify, request, send_from_directory
@@ -48,6 +49,29 @@ def load_voice():
         voice["state"] = "ready"
     except (Exception, SystemExit):
         voice["state"] = "failed"
+
+
+def warm_up():
+    """Run one throwaway voice line and one throwaway LLM reply before the chat opens.
+
+    The first request to each is much slower (CUDA, BERT, loading the Ollama
+    model), so this makes the first real message as fast as the rest.
+    Nothing here is saved to the chat.
+    """
+    if voice["state"] == "ready":
+        print("預熱語音模型…", end="", flush=True)
+        try:
+            tts.synthesize("你好，我是菲米尼。", info["refs"][info["default_emotion"]][0]).unlink()
+            print(" 完成")
+        except Exception as e:
+            print(f" 失敗：{e}")
+    print("預熱 LLM…", end="", flush=True)
+    try:
+        # 用真的系統提示，Ollama 會把這段快取起來，第一則訊息就不用重新讀
+        llm.chat([{"role": "system", "content": system_prompt("freminet")}, {"role": "user", "content": "你好"}])
+        print(" 完成")
+    except RuntimeError as e:
+        print(f" 失敗：{e}")
 
 
 @atexit.register
@@ -183,7 +207,12 @@ def audio(name):
 
 
 if __name__ == "__main__":
-    threading.Thread(target=load_voice, daemon=True).start()
     print(f"LLM：{llm.describe()}")
-    print("打開 http://127.0.0.1:5000")
+    # 先把模型載入和預熱好才開聊天，打開時就能直接聊
+    load_voice()
+    if voice["state"] == "failed":
+        print("語音模型載入失敗，聊天只會有文字")
+    warm_up()
+    print("準備好了，打開 http://127.0.0.1:5000")
+    threading.Timer(1, webbrowser.open, ["http://127.0.0.1:5000"]).start()
     app.run(host="127.0.0.1", port=5000, threaded=True)
