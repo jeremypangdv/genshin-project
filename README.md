@@ -17,11 +17,9 @@
   - 他會自己選情緒（9 種），用對應的參考音頻念
   - 聊天記錄會保存；吞字會自動重念
   - 目前用本地的 `qwen3:4b-instruct` 測試
-- [ ] 換成 API 調整角色效果（**下一步**，2026-10-06 決定用 Claude Sonnet 5.5，見 [LLM](#llm)；還沒買 key）
-  - [x] 舊對話整理成摘要，傳給 API 的記錄一次砍一半，讓快取能命中
-  - [x] API 出錯或額度用完時自動改用本地 qwen 回覆
-  - [ ] 統計花費、超過上限自動停止
-  - [ ] Claude 改用原生 Messages API，加 prompt caching、effort `low`（買 key 後做）
+- [ ] 在另一部電腦（RTX 5060 8GB）跑 `qwen3:14b`，這部透過區域網絡連過去（**下一步**，2026-10-07 決定只用本地模型，不用 API，見 [LLM](#llm)）
+  - [x] 寫好 `server/install_server.bat` 和 `server/start_server.bat`
+  - [ ] 在那部電腦安裝、測試連線，再調角色效果
 - [x] 長期記憶：舊對話整理成摘要（見[聊天 App](#聊天-app)）
 
 ## 資料
@@ -171,9 +169,9 @@ python scripts/app.py
 | 檔案 | 作用 |
 |---|---|
 | `characters/freminet.jpg` | 頭像，從 `freminet profile/images.jpg` 裁出臉部。官方立繪有版權，不放進 git；沒有這張圖就顯示「菲」字 |
-| `config/llm.json` | 用哪個 LLM。改 `active` 就能換：`ollama`（本地測試）、`deepseek`、`claude` |
+| `config/llm.json` | 用哪個 LLM。改 `active` 就能換：`ollama`（這部電腦）、`server`（另一部電腦） |
 | `characters/freminet.md` | 角色資料，每則訊息都會整份放進系統提示。改完不用重開 app，下一則訊息就會用新的 |
-| `scripts/llm.py` | 呼叫 LLM，三個都用 OpenAI 格式的介面 |
+| `scripts/llm.py` | 呼叫 LLM，用 Ollama 的 OpenAI 格式介面 |
 | `scripts/app.py` | 伺服器：LLM 回覆 → 拆出情緒 → GPT-SoVITS 念出來 |
 | `app/index.html` | 聊天介面 |
 | `chats/` | 聊天記錄（不放進 git）；介面右上角垃圾桶可以清除，連摘要一起清 |
@@ -181,19 +179,15 @@ python scripts/app.py
 
 - **本地測試用 `qwen3:4b-instruct`**（Ollama，2.5GB）。不要用 `qwen3:4b`：它會先「思考」，Ollama 的 OpenAI 介面關不掉，回覆會變成空的
 - `start_chat.bat` 設了 `OLLAMA_KEEP_ALIVE=-1`，LLM 不會閒置 5 分鐘就被卸載（只在 bat 自己開 Ollama 時有效）
-- **記憶**：原文最多傳 `history_turns` 輪（Ollama 8 輪，API 20 輪）。超過了就把較舊的一半整理成摘要（200 字以內），放在系統提示最後，原文只留最近一半。
-  - 一次砍一半，不是每則訊息去掉一輪，這樣傳給 API 的內容幾則訊息內都不變，快取能命中
+- **記憶**：原文最多傳 `history_turns` 輪（這部 8 輪，server 12 輪）。超過了就把較舊的一半整理成摘要（200 字以內），放在系統提示最後，原文只留最近一半。
+  - 一次砍一半，不是每則訊息去掉一輪，這樣傳給 LLM 的內容幾則訊息內都不變，Ollama 的快取能命中
   - 摘要在回覆送出後於背景整理；聊天記錄本身不會刪，介面還是看得到全部
   - Ollama 的上下文只有 4096 token：角色資料 + 摘要 + 4 輪約 3100，最多 8 輪時大約接近上限；角色資料再加長的話要調低 `history_turns`
 - 和 GPT-SoVITS 一起用大約佔 5.5GB 顯存
 - 速度：啟動（載入 + 預熱）約 1–2 分鐘；打開後短回覆約 5 秒，5 句左右的長回覆約 13 秒（逐句合成，吞字還要重念）
 - 模型回覆第一行是情緒標籤（例如 `[shy]`），用來選參考音頻；（笑）、*低頭* 這類動作描寫會自動拿掉，不會念出來
-- 換 API：設定環境變數 `DEEPSEEK_API_KEY` 或 `ANTHROPIC_API_KEY`，再把 `active` 改成 `deepseek` 或 `claude`
-- **後備模型**：`config/llm.json` 的 `fallback`（現在是 `ollama`）。`active` 出錯（額度用完、沒網絡、沒設 key）時，這則改用後備模型回覆，聊天介面不會顯示，只在黑色視窗印一行；下一則訊息又會先試 `active`
-  - 後備模型的 `history_turns` 比較小時，會自動只傳最近幾輪
-  - 啟動時後備模型也會預熱，切換時不用等載入
-  - `temperature` 只在 config 有寫才傳：Sonnet 5.5 不接受設定它，寫了會一直出錯
-- 小模型只用來測流程，角色像不像要換成 API 之後再調
+- **用另一部電腦的模型**：見 [LLM 伺服器](#llm-伺服器)，把 `active` 改成 `server`
+- `no_think`：傳 `reasoning_effort: "none"`，`qwen3:14b` 這類混合模型就不會先「思考」把回覆字數用完。實測在提示寫 `/no_think` 沒用；`qwen3:4b`（現在是 2507 只會思考的版本）怎樣都關不掉
 
 ## 聊天程式的規劃
 
@@ -207,27 +201,22 @@ python scripts/app.py
 
 ### LLM
 
-- **正式用 API**：6GB 顯存要留給 GPT-SoVITS，本地小模型角色扮演效果不好
-- 現在先用本地 Ollama（`qwen3:4b-instruct`）測流程，換 API 只要改 `config/llm.json`
-- **決定用 Claude Sonnet 5.5**（2026-10-06）：目標是角色完全像菲米尼，只用一個 API 模型，扮演角色它最穩
-  - 價錢（每百萬 token）：輸入 $2、輸出 $10、快取讀取 $0.20
-  - 估算每則訊息：有快取約 $0.002–0.003，沒有約 $0.007；傳給 LLM 的內容有上限（約 5000 token），聊再久每則也不會變貴
-  - 重度使用（每天 300 則）有快取每月約 $20–25
-  - 要做：改用原生 Messages API（OpenAI 相容介面沒有 prompt caching）、effort 設 `low`、`history_turns` 可調到 10–12
-- 比較過但沒選：
-  - **GPT-6 Luna**（OpenAI）：便宜很多（$0.10 / $0.50），但風格偏簡潔，扮演角色可能比較平淡
-  - **DeepSeek V4 Flash**：便宜、中文好，但不用
-  - **OpenRouter 免費模型**：每天 50 次（累計充 $10 後 1000 次），模型常變，只適合測試
-- 後備：額度用完或出錯時用本地 `qwen3:4b-instruct`，見[聊天 App](#聊天-app)
+- **只用本地模型，不用 API**（2026-10-07 決定）
+- 這部電腦的 6GB 顯存要留給 GPT-SoVITS，所以 LLM 放在另一部電腦（RTX 5060 Laptop 8GB、16GB 記憶體）跑 `qwen3:14b`
+  - 14B 角色扮演算及格：聊久了可能忘記角色、對原神設定知道得少
+  - 想更好：記憶體加到 32GB，換 30B-A3B 這類 MoE 模型
+- 這部電腦的 `qwen3:4b-instruct` 留着做測試
 - 角色像不像主要看提示詞：已經從 353 句官方台詞挑了範例，寫在 `characters/freminet.md`
 
-### 控制花費
+### LLM 伺服器
 
-- 只充少量金額（例如 $5），**不要開自動充值**
-- 在 Console 設每月花費上限
-- 程式裏限制 `max_tokens`（已做，在 `config/llm.json`）；統計花費、超過上限自動停止（還沒做）
-- 用完了也能繼續聊：自動改用本地 qwen（已做，`fallback`）
-- 開發時先用本地模型測試整個流程（已做），確定沒問題再接真 API
+把 `server/` 資料夾複製到另一部電腦：
+
+1. 雙擊 `install_server.bat`：裝 Ollama、下載 `qwen3:14b`（約 9GB）、開防火牆 11434 端口（只限私人網絡）。想換模型改檔案開頭的 `MODEL`
+2. 每次用之前雙擊 `start_server.bat`：會顯示那部電腦的 IP，關掉視窗就停止
+3. 這部電腦的 `config/llm.json`：`server.base_url` 填那部的 IP，`active` 改成 `server`
+
+兩部電腦的 Windows 網絡都要設成「私人網絡」。不在同一個網絡的話用 Tailscale，不要把端口開到外網。
 
 ### 速度
 

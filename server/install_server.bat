@@ -1,52 +1,65 @@
 @echo off
-chcp 65001 >nul
-title 安裝 LLM 伺服器
+rem ASCII only: cmd misreads lines when a .bat file contains Chinese (UTF-8)
+title Install LLM server
 cd /d "%~dp0"
 
-rem 想換模型就改這裏，start_server.bat 不用跟着改
+rem Change the model here; start_server.bat does not need to change
 set MODEL=qwen3:14b
 set OLLAMA_EXE=%LOCALAPPDATA%\Programs\Ollama\ollama.exe
 
-rem 開防火牆要管理員權限，不是的話自己重新用管理員身份開
+rem The firewall rule needs admin, so relaunch as admin if needed.
+rem The path goes through an env var so spaces or ' in folder names are fine.
+set "SELF=%~f0"
 net session >nul 2>&1 || (
-    echo 需要管理員權限，請在彈出的視窗按「是」。
-    powershell -Command "Start-Process '%~f0' -Verb RunAs"
+    echo Needs admin rights. Click "Yes" in the popup.
+    powershell -NoProfile -Command "Start-Process -FilePath $env:SELF -Verb RunAs"
     exit /b
 )
 
 if exist "%OLLAMA_EXE%" (
-    echo Ollama 已經安裝。
+    echo Ollama is already installed.
 ) else (
-    echo 正在下載 Ollama…
-    curl -L -o "%TEMP%\OllamaSetup.exe" https://ollama.com/download/OllamaSetup.exe || goto fail
-    echo 正在安裝 Ollama（安裝視窗會自己完成）…
+    echo Downloading Ollama...
+    curl -fL -o "%TEMP%\OllamaSetup.exe" https://ollama.com/download/OllamaSetup.exe || goto fail
+    echo Installing Ollama, please wait...
     "%TEMP%\OllamaSetup.exe" /SILENT || goto fail
-    del "%TEMP%\OllamaSetup.exe"
+)
+if not exist "%OLLAMA_EXE%" (
+    echo Cannot find %OLLAMA_EXE%
+    goto fail
 )
 
-rem 剛裝完 Ollama 可能還沒開好，等它回應才下載模型
-echo 等待 Ollama 啟動…
+rem Ollama may not be up right after installing: start it once, wait up to 60 seconds
+echo Waiting for Ollama to start...
+curl -s -o nul http://127.0.0.1:11434 || start "" /min "%OLLAMA_EXE%" serve
+set /a TRIES=0
 :wait
 curl -s -o nul http://127.0.0.1:11434 && goto ready
-start "" /min "%OLLAMA_EXE%" serve
-timeout /t 3 >nul
+set /a TRIES+=1
+if %TRIES% geq 20 (
+    echo Ollama did not start within 60 seconds.
+    goto fail
+)
+ping -n 4 127.0.0.1 >nul
 goto wait
 :ready
 
-echo 正在下載模型 %MODEL%（約 9GB，要等一陣子）…
+echo Downloading %MODEL% (about 9GB, this takes a while)...
 "%OLLAMA_EXE%" pull %MODEL% || goto fail
 
-echo 開放防火牆 11434 端口（只限區域網絡）…
+rem Only computers on the same network can connect. Any profile, because Windows
+rem marks new Wi-Fi as Public by default. Naming the program stops Windows from
+rem showing its own firewall popup, where a wrong click blocks Ollama.
+echo Opening firewall port 11434 for the local network...
 netsh advfirewall firewall delete rule name="Ollama LLM Server" >nul 2>&1
-netsh advfirewall firewall add rule name="Ollama LLM Server" dir=in action=allow protocol=TCP localport=11434 profile=private >nul || goto fail
+netsh advfirewall firewall add rule name="Ollama LLM Server" dir=in action=allow program="%OLLAMA_EXE%" protocol=TCP localport=11434 remoteip=localsubnet profile=any >nul || goto fail
 
 echo.
-echo 安裝完成。之後雙擊 start_server.bat 開伺服器。
-echo 注意：Windows 的網絡要設成「私人網絡」，另一部電腦才連得到。
+echo Done. From now on, double-click start_server.bat to run the server.
 pause
 exit /b
 
 :fail
 echo.
-echo 安裝失敗，請看上面的錯誤訊息。
+echo Install failed. See the error above.
 pause

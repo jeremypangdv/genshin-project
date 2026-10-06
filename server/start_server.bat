@@ -1,21 +1,29 @@
 @echo off
-chcp 65001 >nul
+rem ASCII only: cmd misreads lines when a .bat file contains Chinese (UTF-8)
 title LLM Server
 set OLLAMA_EXE=%LOCALAPPDATA%\Programs\Ollama\ollama.exe
 
-rem 開機自動開的 Ollama 只聽本機，先關掉再用下面的設定重開
+if not exist "%OLLAMA_EXE%" (
+    echo Ollama is not installed. Run install_server.bat first.
+    pause
+    exit /b
+)
+
+rem The Ollama that starts with Windows only listens to this computer:
+rem close it and start again with the settings below
 taskkill /f /im "ollama app.exe" >nul 2>&1
 taskkill /f /im ollama.exe >nul 2>&1
+ping -n 3 127.0.0.1 >nul
 
-rem 讓其他電腦連得到；模型一直留在顯存；上下文 8192 token
+rem Let other computers connect; keep the model in VRAM; 8192-token context
 set OLLAMA_HOST=0.0.0.0:11434
 set OLLAMA_KEEP_ALIVE=-1
 set OLLAMA_CONTEXT_LENGTH=8192
 
-echo 這部電腦的 IP（填到聊天電腦 config/llm.json 的 server.base_url）：
+echo This computer's IP. Put it in server.base_url in config/llm.json on the chat computer:
 ipconfig | findstr /c:"IPv4"
 echo.
-echo 伺服器運行中，關掉這個視窗就會停止。
+echo Server is running. Close this window to stop it.
 echo.
 "%OLLAMA_EXE%" serve
 pause

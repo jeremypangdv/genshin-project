@@ -1,15 +1,11 @@
-"""Get a reply from any OpenAI-compatible chat API: Ollama, DeepSeek or Claude.
+"""Get a reply from a local model through Ollama's OpenAI-compatible API.
 
-Which one is used is "active" in config/llm.json, so moving from the local
-test model to an API is a config change, not a code change. API keys come
-from the environment variable named by "api_key_env", never from the file.
-If the active one fails (no credit, no network) and "fallback" names another,
-the reply comes from that one instead, without the chat noticing.
+Which one is used is "active" in config/llm.json: "ollama" on this computer
+or "server" on the other one, so switching is a config change.
 Uses only the standard library.
 """
 
 import json
-import os
 import re
 import urllib.error
 import urllib.request
@@ -30,16 +26,7 @@ def describe():
 
 
 def chat(messages):
-    cfg = load_config()
-    name, fallback = cfg["active"], cfg.get("fallback")
-    try:
-        return call(name, messages)
-    except RuntimeError as e:
-        if not fallback or fallback == name:
-            raise
-        # 只在黑色視窗留記錄，聊天介面不會顯示
-        print(f"{name} 失敗，這則改用 {fallback}：{e}")
-        return call(fallback, messages)
+    return call(load_config()["active"], messages)
 
 
 def trim(messages, turns):
@@ -55,25 +42,20 @@ def call(name, messages):
     p = load_config()["providers"][name]
     if p.get("history_turns"):
         messages = trim(messages, p["history_turns"])
-    if p.get("no_think") and messages and messages[0]["role"] == "system":
-        # Qwen3 混合模型看到 /no_think 就不思考，不然會花光 max_tokens 回覆變空白
-        messages = [{**messages[0], "content": messages[0]["content"] + "\n/no_think"}] + messages[1:]
-    headers = {"Content-Type": "application/json"}
-    if p.get("api_key_env"):
-        key = os.environ.get(p["api_key_env"])
-        if not key:
-            raise RuntimeError(f"沒有設定環境變數 {p['api_key_env']}")
-        headers["Authorization"] = f"Bearer {key}"
     body = {
         "model": p["model"],
         "messages": messages,
         "max_tokens": p.get("max_tokens", 300),
     }
-    # Sonnet 5.5 不接受設定 temperature，所以只在 config 裏有寫的時候才傳
+    if p.get("no_think"):
+        # 讓 qwen3:14b 這類混合模型不思考，不然會花光 max_tokens 回覆變空白。
+        # 在提示裏寫 /no_think 實測沒用；2507 版的 qwen3:4b 只會思考，這個也關不掉
+        body["reasoning_effort"] = "none"
     if "temperature" in p:
         body["temperature"] = p["temperature"]
     req = urllib.request.Request(f"{p['base_url'].rstrip('/')}/chat/completions",
-                                 data=json.dumps(body).encode("utf-8"), headers=headers)
+                                 data=json.dumps(body).encode("utf-8"),
+                                 headers={"Content-Type": "application/json"})
     try:
         data = json.loads(urllib.request.urlopen(req, timeout=300).read())
     except urllib.error.HTTPError as e:
