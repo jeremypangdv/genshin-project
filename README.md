@@ -221,11 +221,11 @@ python scripts/app.py
 
 那部電腦只要 `server/` 的兩個 notebook，用 VS Code 打開，由上而下按 ▶ 執行。
 
-前置條件：Windows 10/11、管理員帳號、C 槽 12GB 以上；電源設成插電時不睡眠。裝好 Python，VS Code 裝好 Python 和 Jupyter 擴充功能。和聊天電腦同一個網絡，或者兩部都裝 Tailscale（見下面）。
+前置條件：Windows 10/11、管理員帳號、C 槽 12GB 以上；電源設成插電時不睡眠。裝好 Python，VS Code 裝好 Python 和 Jupyter 擴充功能。在 PowerShell 執行 `irm https://ollama.com/install.ps1 | iex` 裝 Ollama，裝好後重開 VS Code。和聊天電腦同一個網絡，或者兩部都裝 Tailscale（見下面）。
 
 | 檔案 | 做什麼 | 什麼時候跑 |
 |---|---|---|
-| `install_server.ipynb` | 安裝 Ollama、下載 `qwen3:14b`（約 9GB）、開防火牆（會彈出管理員視窗，按「是」） | 第一次 |
+| `install_server.ipynb` | 下載 `qwen3:14b`（約 9GB）、開防火牆（會彈出管理員視窗，按「是」）。沒裝 Ollama 的話會提示先裝 | 第一次 |
 | `start_server.ipynb` | 開伺服器：顯示 IP、載入模型、測試一句，然後一直運行；按 ■ 停止 | 每次 |
 
 想換模型改兩個檔案 cell 1 的 `MODEL`（兩個要一樣）。
@@ -239,7 +239,7 @@ python scripts/app.py
 - **Ollama 沒有密碼**：同一個 Wi-Fi 的人都能用模型、刪模型、看到聊天內容（沒加密）。只在家裏開，公共 Wi-Fi 不要開伺服器
 - 路由器重開後 IP 可能會變，連不上就看 `start_server.ipynb` 顯示的 IP；想固定的話在路由器設 DHCP 保留，或者用 Tailscale 的 IP
 - Ollama 的記錄在 `%TEMP%\ollama_server.log`
-- 在這部電腦測過（用 `qwen3:4b-instruct`）：下載模型、開伺服器、停止。還沒驗證：安裝 Ollama（這部已經裝了）、開防火牆（要管理員）、14B 的速度、Tailscale 實際連線
+- 在這部電腦測過（用 `qwen3:4b-instruct`）：下載模型、開伺服器、停止。還沒驗證：開防火牆（要管理員）、14B 的速度、Tailscale 實際連線
 
 **兩部電腦不在同一個地方：用 Tailscale**
 
