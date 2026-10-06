@@ -22,6 +22,14 @@ set OLLAMA_CONTEXT_LENGTH=8192
 
 echo This computer's IP. Put it in server.base_url in config/llm.json on the chat computer:
 ipconfig | findstr /c:"IPv4"
+
+rem Tailscale IP does not change and works from anywhere
+set TS_EXE=%ProgramFiles%\Tailscale\tailscale.exe
+if exist "%TS_EXE%" (
+    echo.
+    echo Tailscale IP, use this when the two computers are not on the same Wi-Fi:
+    "%TS_EXE%" ip -4
+)
 echo.
 echo Server is running. Close this window to stop it.
 echo.

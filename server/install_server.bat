@@ -47,12 +47,12 @@ goto wait
 echo Downloading %MODEL% (about 9GB, this takes a while)...
 "%OLLAMA_EXE%" pull %MODEL% || goto fail
 
-rem Only computers on the same network can connect. Any profile, because Windows
-rem marks new Wi-Fi as Public by default. Naming the program stops Windows from
+rem Only computers on the same network, or on your Tailscale (100.64.0.0/10), can
+rem connect. Any profile, because Windows marks new Wi-Fi as Public by default. Naming the program stops Windows from
 rem showing its own firewall popup, where a wrong click blocks Ollama.
-echo Opening firewall port 11434 for the local network...
+echo Opening firewall port 11434 for the local network and Tailscale...
 netsh advfirewall firewall delete rule name="Ollama LLM Server" >nul 2>&1
-netsh advfirewall firewall add rule name="Ollama LLM Server" dir=in action=allow program="%OLLAMA_EXE%" protocol=TCP localport=11434 remoteip=localsubnet profile=any >nul || goto fail
+netsh advfirewall firewall add rule name="Ollama LLM Server" dir=in action=allow program="%OLLAMA_EXE%" protocol=TCP localport=11434 remoteip=localsubnet,100.64.0.0/10 profile=any >nul || goto fail
 
 echo.
 echo Done. From now on, double-click start_server.bat to run the server.

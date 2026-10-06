@@ -41,9 +41,15 @@
 
 ## 電腦配置
 
+聊天電腦（跑 GPT-SoVITS 和聊天介面）：
+
 - 顯卡：RTX 3060 Laptop，**6GB 顯存**
 - 記憶體：16GB
 - GPT-SoVITS：`D:\characters\GPT-SoVITS-Rin\GPT-SoVITS-v2pro-20250604`（2025-06 整合包，v2Pro / v2ProPlus / v4 底模都已齊全，不用下載）
+
+LLM 伺服器（只跑 Ollama，見 [LLM 伺服器](#llm-伺服器)）：
+
+- Ryzen 7 260、RTX 5060 Laptop 115W，**8GB 顯存**、16GB 記憶體、1TB SSD
 
 ## 語音模型訓練方案
 
@@ -210,13 +216,29 @@ python scripts/app.py
 
 ### LLM 伺服器
 
-把 `server/` 資料夾複製到另一部電腦：
+那部電腦只要 `server/` 的兩個檔案，不用裝 Python。從 GitHub 下載要用「Download raw file」。
 
-1. 雙擊 `install_server.bat`：裝 Ollama、下載 `qwen3:14b`（約 9GB）、開防火牆 11434 端口（只限私人網絡）。想換模型改檔案開頭的 `MODEL`
-2. 每次用之前雙擊 `start_server.bat`：會顯示那部電腦的 IP，關掉視窗就停止
-3. 這部電腦的 `config/llm.json`：`server.base_url` 填那部的 IP，`active` 改成 `server`
+前置條件：Windows 10/11、管理員帳號、C 槽 12GB 以上；電源設成插電時不睡眠。和聊天電腦同一個網絡，或者兩部都裝 Tailscale（見下面）。
 
-兩部電腦的 Windows 網絡都要設成「私人網絡」。不在同一個網絡的話用 Tailscale，不要把端口開到外網。
+1. 雙擊 `install_server.bat`（只做一次）：裝 Ollama、下載 `qwen3:14b`（約 9GB）、開防火牆 11434 端口。想換模型改檔案開頭的 `MODEL`
+2. 每次用之前雙擊 `start_server.bat`：會顯示那部電腦的 IP，視窗保持開着，關掉就停止
+3. 這部電腦的 `config/llm.json`：`server.base_url` 填那部的 IP，`active` 改成 `server`（只改一次）
+
+之後每次：先開那部的 `start_server.bat`，再開這部的 `start_chat.bat`。順序反了的話 LLM 預熱會失敗，第一則訊息要多等十幾秒載入。
+
+- 防火牆規則只讓同一個網絡和 Tailscale（`100.64.0.0/10`）的電腦連入，不分私人／公用網絡（Windows 新連的 Wi-Fi 預設是公用）
+- 兩個 bat 檔只用英文：檔案裏有中文的話，cmd 會讀錯行。存進 git 時是 CRLF（`.gitattributes`），LF 的話 `goto` 可能跳錯
+- **Ollama 沒有密碼**：同一個 Wi-Fi 的人都能用模型、刪模型、看到聊天內容（沒加密）。只在家裏開，公共 Wi-Fi 不要開 `start_server.bat`
+- 路由器重開後 IP 可能會變，連不上就看 `start_server.bat` 顯示的 IP；想固定的話在路由器設 DHCP 保留，或者用 Tailscale 的 IP
+- 還沒在那部電腦實際跑過：安裝 Ollama、管理員權限、防火牆、14B 的速度、Tailscale 都還沒驗證
+
+**兩部電腦不在同一個地方：用 Tailscale**
+
+1. 兩部電腦都到 https://tailscale.com/download 裝 Tailscale，登入**同一個帳號**
+2. 2026-10-07 之前跑過 `install_server.bat` 的話，再跑一次（防火牆規則才有 Tailscale；Ollama 和模型已經有，會跳過）
+3. `start_server.bat` 會多顯示一行 Tailscale IP（`100.x.x.x`），填到 `server.base_url`。這個 IP 不會變，在家裏也可以一直用它
+
+有加密，只有登入你帳號的裝置連得到。**不要在路由器開端口轉發**：Ollama 沒有密碼，開了全世界都能用。
 
 ### 速度
 
