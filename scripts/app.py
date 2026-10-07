@@ -32,6 +32,8 @@ NAMES = {v: k for k, v in tts.ALIASES.items()}
 TAG = re.compile(r"^\s*[\[【(（]\s*([A-Za-z一-鿿]+)\s*[\]】)）]\s*")
 # 念出來的只能是對白，把（笑）、*低頭* 這種動作描寫拿掉
 ACTION = re.compile(r"（[^）]*）|\([^)]*\)|\*[^*]*\*")
+# 小模型偶爾在中文裏夾英文（「maybe」「usually」），寫在提示裏也禁不掉，有的話就重新生成
+ENGLISH = re.compile(r"[A-Za-z]{2,}")
 
 app = Flask(__name__, static_folder=None)
 info = json.loads((tts.MODEL_DIR / "model.json").read_text(encoding="utf-8"))
@@ -238,10 +240,13 @@ def send(friend):
         messages.append({"role": "user", "text": text, "time": time.time()})
         save_chat(friend, messages)
         try:
-            raw = llm.chat(llm_messages(friend, messages))
+            for _ in range(3):
+                raw = llm.chat(llm_messages(friend, messages))
+                emotion, reply = parse_reply(raw)
+                if not ENGLISH.search(reply):
+                    break
         except RuntimeError as e:
             return jsonify(error=str(e)), 502
-        emotion, reply = parse_reply(raw)
         if not reply:
             return jsonify(error=f"模型沒有回覆內容：{raw!r}"), 502
 

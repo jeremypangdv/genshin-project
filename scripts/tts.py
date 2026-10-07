@@ -11,6 +11,7 @@ import io
 import json
 import os
 import re
+import statistics
 import subprocess
 import sys
 import time
@@ -123,9 +124,15 @@ def find_weights(version):
 
 # 吞字檢查：訓練資料裏菲米尼最快大約每字 0.19 秒，比這更短就是有字被跳過了
 MIN_SECONDS_PER_CHAR = 0.2
+# 但每段參考音頻的語速差很多（sad 每字約 0.4 秒，calm 約 0.27 秒），固定的下限抓不到慢的情緒吞字。
+# 所以按參考音頻記住最近念過的語速，比平常快 25% 以上也當作吞字
+SKIP_RATIO = 0.75
+SPEED = {}  # 參考音頻 -> 最近每句每個字幾秒
 RETRIES = 3
 SENTENCE = re.compile(r"[^。！？!?\n]+[。！？!?]*")
 SPOKEN = re.compile(r"[一-鿿A-Za-z0-9]")
+# 結巴：一兩個字加上「…」或逗號，後面緊接同樣的字，例如「我…我」「不，不覺得」「因為…因為」
+STUTTER = re.compile(r"([一-鿿]{1,2})(?:[…]+|\.{3,}|[，、])\s*(?=\1)")
 
 
 def split_sentences(text):
@@ -174,15 +181,24 @@ def synthesize(text, ref):
     """
     params, parts = None, []
     for sentence in split_sentences(text):
+        # 結巴「我…我覺得」念的時候只念一個「我」，連續相同的字模型常常只念一個，順便吞掉後面的字
+        spoken = STUTTER.sub("", sentence)
         # 「…」很容易讓模型提早結束，念的時候換成逗號（字幕不受影響）
-        spoken = re.sub(r"[…]+|\.{3,}", "，", sentence).strip("，")
-        need = len(SPOKEN.findall(spoken)) * MIN_SECONDS_PER_CHAR
+        spoken = re.sub(r"[…]+|\.{3,}", "，", spoken).strip("，")
+        chars = len(SPOKEN.findall(spoken))
+        seen = SPEED.setdefault(ref["audio"], [])
+        per_char = MIN_SECONDS_PER_CHAR
+        if len(seen) >= 5:
+            per_char = max(per_char, statistics.median(seen) * SKIP_RATIO)
         best = b""
         for _ in range(RETRIES):
             params, frames = request_wav(spoken, ref)
             if len(frames) > len(best):
                 best = frames
-            if len(best) / (params.framerate * params.sampwidth * params.nchannels) >= need:
+            seconds = len(best) / (params.framerate * params.sampwidth * params.nchannels)
+            if seconds >= chars * per_char:
+                seen.append(seconds / chars)
+                seen[:] = seen[-30:]
                 break
         parts.append(best)
     if not parts:
