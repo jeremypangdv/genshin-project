@@ -35,8 +35,14 @@ TAG = re.compile(r"^\s*[\[【(（]\s*([A-Za-z一-鿿]+)\s*[\]】)）]\s*")
 ACTION = re.compile(r"（[^）]*）|\([^)]*\)|\*[^*]*\*")
 # 小模型偶爾在中文裏夾英文（「maybe」「usually」），寫在提示裏也禁不掉，有的話就重新生成
 ENGLISH = re.compile(r"[A-Za-z]{2,}")
+# 對方說要英文，或整則訊息都是英文時，才不擋英文；中文裏夾個「LOL」這種不算
+ASK_ENGLISH = re.compile(r"英文|英語|English", re.I)
+CHINESE = re.compile(r"[一-鿿]")
 # 開頭的語氣詞。小模型一害羞就每句都用「那個…」開頭，提示裏禁也禁不掉，所以最多每三句用一次
 FILLER = re.compile(r"^(?:(?:那個|嗯|唔|呃|啊|欸)[…，,.。？！?!\s]+)+")
+# 語音訊息要短，提示裏叫模型一兩句它還是常常寫到七八十字，超過就在句子結尾切掉
+SENTENCE = re.compile(r"[^。！？!?.]+[。！？!?….]*|[。！？!?.]+")
+MAX_CHARS = 45
 
 app = Flask(__name__, static_folder=None)
 info = json.loads((tts.MODEL_DIR / "model.json").read_text(encoding="utf-8"))
@@ -94,7 +100,8 @@ def system_prompt(friend, summary=""):
 - 這是聊天軟件裏的對話，你的回覆會用你的聲音念出來，變成語音訊息。
 - 第一行只寫一個情緒標籤，選最符合這次回覆語氣的：{emotions}
 - 第二行開始寫你說出口的話。不要寫動作、表情、旁白（例如「（笑）」「*低頭*」），也不要用表情符號。
-- 用繁體中文、口語，一般一到三句，不要長篇大論。
+- 用繁體中文、口語。這是語音訊息，要像平常講話一樣短：通常一兩句、三十字左右，問什麼答什麼就好。
+- 不用每次都補充自己的事，也不用每次都反問對方，大部分回覆說完就停。
 - 不要提到自己是 AI 或語言模型。""" + (f"""
 
 ## 你們之前聊過的事（摘要）
@@ -108,6 +115,25 @@ def vary_opening(reply, messages):
     if any(FILLER.match(t) for t in recent) and rest and rest != reply:
         return rest
     return reply
+
+
+def size(text):
+    """Length in Chinese characters; an English word counts as two."""
+    return len(re.sub(r"[A-Za-z']+", "字字", re.sub(r"\s", "", text)))
+
+
+def wants_english(text):
+    return bool(ASK_ENGLISH.search(text) or (ENGLISH.search(text) and not CHINESE.search(text)))
+
+
+def shorten(reply):
+    """Keep whole sentences up to MAX_CHARS; the first sentence is always kept."""
+    out = ""
+    for part in SENTENCE.findall(reply):
+        if out and size(out + part) > MAX_CHARS:
+            break
+        out += part
+    return out.strip()
 
 
 def chat_path(friend):
@@ -163,7 +189,7 @@ def summarize(friend):
         f"{'對方' if m['role'] == 'user' else '菲米尼'}：{m['text']}" for m in messages[memory["upto"]:cut])
     prompt = f"""把菲米尼和對方（旅行者）的聊天整理成摘要，給菲米尼以後記得聊過什麼。
 - 寫重要的：對方說過自己的事（喜好、經歷、心情）、約定、聊過的話題、兩人關係的變化
-- 和舊摘要合併成一份，舊的不重要的可以刪；用第三人稱，條列，總共不超過 200 字
+- 和舊摘要合併成一份，舊的不重要的可以刪；用第三人稱，條列，總共不超過 400 字
 - 只輸出摘要，不要其他文字
 
 舊摘要：
@@ -255,13 +281,13 @@ def send(friend):
             for _ in range(3):
                 raw = llm.chat(llm_messages(friend, messages))
                 emotion, reply = parse_reply(raw)
-                if not ENGLISH.search(reply):
+                if not ENGLISH.search(reply) or wants_english(text):
                     break
         except RuntimeError as e:
             return jsonify(error=str(e)), 502
         if not reply:
             return jsonify(error=f"模型沒有回覆內容：{raw!r}"), 502
-        reply = vary_opening(reply, messages)
+        reply = shorten(vary_opening(reply, messages))
 
         msg = {"role": "assistant", "text": reply, "emotion": emotion, "time": time.time()}
         if voice["state"] == "ready":

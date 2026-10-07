@@ -131,6 +131,7 @@ SPEED = {}  # 參考音頻 -> 最近每句每個字幾秒
 RETRIES = 3
 SENTENCE = re.compile(r"[^。！？!?\n]+[。！？!?]*")
 SPOKEN = re.compile(r"[一-鿿A-Za-z0-9]")
+CJK = re.compile(r"[一-鿿]")
 # 結巴：一兩個字加上「…」或逗號，後面緊接同樣的字，例如「我…我」「不，不覺得」「因為…因為」
 STUTTER = re.compile(r"([一-鿿]{1,2})(?:[…]+|\.{3,}|[，、])\s*(?=\1)")
 
@@ -154,10 +155,10 @@ def split_sentences(text):
     return out
 
 
-def request_wav(text, ref):
+def request_wav(text, ref, lang="zh"):
     body = {
         "text": text,
-        "text_lang": "zh",
+        "text_lang": lang,
         "ref_audio_path": str(MODEL_DIR / ref["audio"]),
         "prompt_text": ref["text"],
         "prompt_lang": "zh",
@@ -187,6 +188,11 @@ def synthesize(text, ref):
         # 「…」很容易讓模型提早結束，念的時候換成逗號（字幕不受影響）
         spoken = re.sub(r"[…]+|\.{3,}", "，", spoken).strip("，")
         chars = len(SPOKEN.findall(spoken))
+        # 整句英文（對方要他說英文時）用英文念；每個字母的秒數和中文字差很遠，不檢查漏字
+        if not CJK.search(spoken):
+            params, frames = request_wav(spoken, ref, "en")
+            parts.append(frames)
+            continue
         seen = SPEED.setdefault(ref["audio"], [])
         per_char = MIN_SECONDS_PER_CHAR
         if len(seen) >= 5:

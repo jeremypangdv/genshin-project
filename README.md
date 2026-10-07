@@ -197,7 +197,7 @@ python scripts/app.py
 
 - **本地測試用 `qwen3:4b-instruct`**（Ollama，2.5GB）。不要用 `qwen3:4b`：它會先「思考」，Ollama 的 OpenAI 介面關不掉，回覆會變成空的
 - `start_chat.bat` 設了 `OLLAMA_KEEP_ALIVE=-1`，LLM 不會閒置 5 分鐘就被卸載（只在 bat 自己開 Ollama 時有效）
-- **記憶**：原文最多傳 `history_turns` 輪（這部 8 輪，server 12 輪）。超過了就把較舊的一半整理成摘要（200 字以內），放在系統提示最後，原文只留最近一半。
+- **記憶**：原文最多傳 `history_turns` 輪（這部 8 輪，server 12 輪）。超過了就把較舊的一半整理成摘要（400 字以內），放在系統提示最後，原文只留最近一半。
   - 一次砍一半，不是每則訊息去掉一輪，這樣傳給 LLM 的內容幾則訊息內都不變，Ollama 的快取能命中
   - 摘要在回覆送出後於背景整理；聊天記錄本身不會刪，介面還是看得到全部
   - Ollama 的上下文只有 4096 token：角色資料 + 摘要 + 4 輪約 3100，最多 8 輪時大約接近上限；角色資料再加長的話要調低 `history_turns`
