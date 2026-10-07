@@ -17,7 +17,7 @@
   - 類似 WhatsApp，菲米尼用語音訊息回覆，播放時顯示字幕，頭像用他的照片
   - 他會自己選情緒（9 種），用對應的參考音頻念
   - 聊天記錄會保存；吞字會自動重念
-  - 聊天背景是菲米尼的圖（`characters/freminet-background.jpg`）
+  - 2026-10-08：聊天畫面鋪滿整個視窗，不顯示好友列表；聊天背景可以在設定裏切換、下載、上傳（圖放在 `freminet profile/Background/`）；右上角可以隱藏聊天記錄，只看背景圖；菲米尼會像地鼠一樣從輸入欄後面探頭，點他會飄出愛心
   - 目前用這部電腦的 `qwen3:8b` 測試（`active` 是 `ollama_8b`），之前是 `qwen3:4b-instruct`
 - [ ] 在另一部電腦（RTX 5060 8GB）跑 `qwen3:14b`，這部透過 Tailscale 連過去（**下一步**，見 [LLM](#llm)）
   - [x] 寫好 `server/install_server.ipynb` 和 `server/start_server.ipynb`（2026-10-07 從 bat 檔改成 notebook）
@@ -180,12 +180,14 @@ python scripts/chatbox.py
 python scripts/app.py
 ```
 
-打開 http://127.0.0.1:5000 。或者直接雙擊 `start_chat.bat`：會順便開 Ollama，關掉黑色視窗就會關掉伺服器。啟動時黑色視窗會先載入語音模型，再各送一句測試給語音模型和 LLM 預熱（不會記進聊天記錄），全部完成才自動打開瀏覽器，打開就能直接聊。類似 WhatsApp：左邊點「菲米尼」，傳訊息，他用語音訊息回覆；按播放時，語音下面會跟着進度顯示字幕。
+打開 http://127.0.0.1:5000 。或者直接雙擊 `start_chat.bat`：會順便開 Ollama，關掉黑色視窗就會關掉伺服器。啟動時黑色視窗會先載入語音模型，再各送一句測試給語音模型和 LLM 預熱（不會記進聊天記錄），全部完成才自動打開瀏覽器，打開就能直接聊。類似 WhatsApp：打開就是和菲米尼的聊天（鋪滿整個視窗，沒有好友列表），傳訊息，他用語音訊息回覆；按播放時，語音下面會跟着進度顯示字幕。
 
 | 檔案 | 作用 |
 |---|---|
 | `characters/freminet.jpg` | 頭像，從 `freminet profile/images.jpg` 裁出臉部。官方立繪有版權，不放進 git；沒有這張圖就顯示「菲」字 |
-| `characters/freminet-background.jpg` | 聊天背景，從 `freminet profile/background.png` 縮成 1920 寬。一樣不放進 git；沒有這張圖就用原本的底色 |
+| `freminet profile/Background/` | 聊天背景圖，放進去的圖都會出現在設定裏。預設用 `background.png`。一樣不放進 git；資料夾沒有圖就用原本的底色 |
+| `characters/freminet-peek.gif` | 從輸入欄後面探頭的菲米尼，從 `freminet profile/interactive asset/freminet-no-bg-sharp-2x.gif` 複製。不放進 git；沒有就不出現 |
+| `characters/freminet-heart.png` | 點他飄出來的愛心，從 `freminet profile/interactive asset/Pixel Heart Sprite Sheet 32x32.png` 複製。不放進 git |
 | `config/llm.json` | 用哪個 LLM。改 `active` 就能換：`ollama`（這部的 4b）、`ollama_8b`（這部的 8b）、`server`（另一部電腦的 14b） |
 | `config/tts.json` | GPT-SoVITS 整合包的路徑，每部電腦不同。路徑用 `/` 分隔 |
 | `characters/freminet.md` | 角色資料，每則訊息都會整份放進系統提示。改完不用重開 app，下一則訊息就會用新的 |
@@ -195,6 +197,12 @@ python scripts/app.py
 | `chats/` | 聊天記錄（不放進 git）；介面右上角垃圾桶可以清除，連摘要一起清 |
 | `chats/<角色>.memory.json` | 舊對話的摘要，和 `upto`（摘要包括到第幾則訊息） |
 
+- **介面右上角**（由左到右）：
+  - ⚙ 聊天背景：小窗裏用左右箭頭或滑鼠滾輪切換，外面的背景即時跟着換；可以下載目前這張，或上傳新圖（存進 `freminet profile/Background/`，同名會自動改名）。選過的那張記在瀏覽器裏
+  - 👁 隱藏聊天記錄：拿掉暗色那層，只看背景圖，再按一次回來
+  - 🗑 清除聊天記錄
+- **探頭的菲米尼**：每隔 3–9 秒在輸入欄上面隨機位置出現，待 2.5–5 秒縮回去；點他會馬上躲起來並飄出愛心。大小改 `app/index.html` 裏 `.peek` 的 `width`（改大的話 `.hole` 的 `height` 也要加）
+- 角色的圖片設定在 `scripts/app.py` 的 `FRIENDS`：`image` 頭像、`backgrounds` 背景資料夾、`background` 預設背景、`peek` 探頭 gif、`heart` 愛心
 - **本地測試用 `qwen3:4b-instruct`**（Ollama，2.5GB）。不要用 `qwen3:4b`：它會先「思考」，Ollama 的 OpenAI 介面關不掉，回覆會變成空的
 - `start_chat.bat` 設了 `OLLAMA_KEEP_ALIVE=-1`，LLM 不會閒置 5 分鐘就被卸載（只在 bat 自己開 Ollama 時有效）
 - **記憶**：原文最多傳 `history_turns` 輪（這部 8 輪，server 12 輪）。超過了就把較舊的一半整理成摘要（400 字以內），放在系統提示最後，原文只留最近一半。
