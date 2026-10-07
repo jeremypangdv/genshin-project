@@ -25,7 +25,8 @@ from pathlib import Path
 PROJECT = Path(__file__).resolve().parent.parent
 MODEL_DIR = PROJECT / "Models" / "Freminet"
 OUTPUT_DIR = PROJECT / "tts_output"
-GSV = Path(r"D:\characters\GPT-SoVITS-Rin\GPT-SoVITS-v2pro-20250604")
+# GPT-SoVITS 整合包放在哪裏，每部電腦不同，寫在 config/tts.json
+GSV = Path(json.loads((PROJECT / "config" / "tts.json").read_text(encoding="utf-8"))["gpt_sovits"])
 PYTHON = GSV / "runtime" / "python.exe"
 API = "http://127.0.0.1:9880"
 EXP_NAME = "Freminet"
@@ -55,6 +56,9 @@ def api_up():
 
 
 def start_api(info):
+    if not PYTHON.exists():
+        print(f"找不到 GPT-SoVITS：{GSV}\n請把 config/tts.json 的 gpt_sovits 改成整合包的資料夾")
+        sys.exit(1)
     config = {"custom": {
         "bert_base_path": "GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large",
         "cnhuhbert_base_path": "GPT_SoVITS/pretrained_models/chinese-hubert-base",

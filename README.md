@@ -48,7 +48,7 @@
 
 - 顯卡：RTX 3060 Laptop，**6GB 顯存**
 - 記憶體：16GB
-- GPT-SoVITS：`D:\characters\GPT-SoVITS-Rin\GPT-SoVITS-v2pro-20250604`（2025-06 整合包，v2Pro / v2ProPlus / v4 底模都已齊全，不用下載）
+- GPT-SoVITS：`D:\characters\GPT-SoVITS-Rin\GPT-SoVITS-v2pro-20250604`（2025-06 整合包，v2Pro / v2ProPlus / v4 底模都已齊全，不用下載）。路徑寫在 `config/tts.json`，別的電腦要改成自己的路徑（用 `/` 分隔）
 
 LLM 伺服器（只跑 Ollama，見 [LLM 伺服器](#llm-伺服器)）：
 
