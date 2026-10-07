@@ -136,12 +136,13 @@ STUTTER = re.compile(r"([一-鿿]{1,2})(?:[…]+|\.{3,}|[，、])\s*(?=\1)")
 
 
 def split_sentences(text):
-    """Split into sentences; very short ones like 「唔…」 are joined to the next."""
+    """Split into sentences; short ones like 「那個…好的。」 are joined to the next."""
     out, carry = [], ""
     for s in SENTENCE.findall(text):
         s = carry + s.strip()
         carry = ""
-        if len(SPOKEN.findall(s)) < 4:
+        # 很短的句子模型常常只念前半，後面變成靜音（「那個，好的。」常常只念出「那個」）
+        if len(SPOKEN.findall(s)) < 8:
             carry = s
         elif s:
             out.append(s)

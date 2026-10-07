@@ -34,6 +34,8 @@ TAG = re.compile(r"^\s*[\[【(（]\s*([A-Za-z一-鿿]+)\s*[\]】)）]\s*")
 ACTION = re.compile(r"（[^）]*）|\([^)]*\)|\*[^*]*\*")
 # 小模型偶爾在中文裏夾英文（「maybe」「usually」），寫在提示裏也禁不掉，有的話就重新生成
 ENGLISH = re.compile(r"[A-Za-z]{2,}")
+# 開頭的語氣詞。小模型一害羞就每句都用「那個…」開頭，提示裏禁也禁不掉，所以最多每三句用一次
+FILLER = re.compile(r"^(?:(?:那個|嗯|唔|呃|啊|欸)[…，,.。？！?!\s]+)+")
 
 app = Flask(__name__, static_folder=None)
 info = json.loads((tts.MODEL_DIR / "model.json").read_text(encoding="utf-8"))
@@ -96,6 +98,15 @@ def system_prompt(friend, summary=""):
 
 ## 你們之前聊過的事（摘要）
 {summary}""" if summary else "")
+
+
+def vary_opening(reply, messages):
+    """Drop the filler at the start of the reply if either of the last two replies started with one."""
+    recent = [m["text"] for m in messages if m["role"] == "assistant"][-2:]
+    rest = FILLER.sub("", reply, count=1)
+    if any(FILLER.match(t) for t in recent) and rest and rest != reply:
+        return rest
+    return reply
 
 
 def chat_path(friend):
@@ -249,6 +260,7 @@ def send(friend):
             return jsonify(error=str(e)), 502
         if not reply:
             return jsonify(error=f"模型沒有回覆內容：{raw!r}"), 502
+        reply = vary_opening(reply, messages)
 
         msg = {"role": "assistant", "text": reply, "emotion": emotion, "time": time.time()}
         if voice["state"] == "ready":
