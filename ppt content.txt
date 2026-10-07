@@ -1,0 +1,16 @@
+1. local model
+- 8b - 使用者可以安心使用，因爲server端可以完全開啓
+- 14b - 問題是只能用llm, voice model部分要在使用者電腦，所以要知道使用者電腦是多少，但配置要求不是很大，列出minimum 配置for使用者的
+
+2. api
+中文表現力好的：
+deepseek
+qwen
+
+性價比最高的:
+gpt luna
+
+然後幫我列出以上api的所有價格對比
+
+local model vs api 
+- 列出彼此的好處和壞處
