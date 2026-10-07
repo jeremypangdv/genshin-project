@@ -55,15 +55,25 @@ def api_up():
         return False
 
 
+def has_cuda():
+    """Ask GPT-SoVITS's own torch whether there is an NVIDIA GPU it can use."""
+    result = subprocess.run([str(PYTHON), "-s", "-c", "import torch; print(torch.cuda.is_available())"],
+                            cwd=GSV, capture_output=True, text=True)
+    return result.stdout.strip() == "True"
+
+
 def start_api(info):
     if not PYTHON.exists():
         print(f"找不到 GPT-SoVITS：{GSV}\n請把 config/tts.json 的 gpt_sovits 改成整合包的資料夾")
         sys.exit(1)
+    cuda = has_cuda()
+    if not cuda:
+        print("找不到 NVIDIA 顯卡，改用 CPU（每句會慢很多）")
     config = {"custom": {
         "bert_base_path": "GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large",
         "cnhuhbert_base_path": "GPT_SoVITS/pretrained_models/chinese-hubert-base",
-        "device": "cuda",
-        "is_half": True,
+        "device": "cuda" if cuda else "cpu",
+        "is_half": cuda,  # CPU 不支援半精度
         "version": info["version"],
         "t2s_weights_path": str(MODEL_DIR / info["gpt"]),
         "vits_weights_path": str(MODEL_DIR / info["sovits"]),
@@ -79,7 +89,7 @@ def start_api(info):
         cwd=GSV, stdout=log, stderr=subprocess.STDOUT, env=env,
     )
     print("正在載入模型，大約要半分鐘…", end="", flush=True)
-    for _ in range(180):
+    for _ in range(180 if cuda else 600):
         if proc.poll() is not None:
             print(f"\nAPI 啟動失敗，記錄在 {log.name}")
             sys.exit(1)
@@ -89,7 +99,7 @@ def start_api(info):
         time.sleep(1)
         print(".", end="", flush=True)
     proc.terminate()
-    print(f"\nAPI 三分鐘內沒有啟動，記錄在 {log.name}")
+    print(f"\nAPI 太久沒有啟動，記錄在 {log.name}")
     sys.exit(1)
 
 
