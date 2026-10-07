@@ -5,4 +5,6 @@ __pycache__/
 chats/
 # 官方立繪有版權，repo 是公開的，不上傳
 characters/*.jpg
+characters/*.gif
+characters/*.png
 freminet profile/

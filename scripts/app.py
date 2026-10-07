@@ -25,8 +25,11 @@ APP_DIR = PROJECT / "app"
 CHAT_DIR = PROJECT / "chats"
 CHARACTER_DIR = PROJECT / "characters"
 # avatar 是沒有頭像圖片時顯示的字；image 放在 characters/ 裏
+# backgrounds 是聊天背景圖的資料夾，background 是還沒選過時預設用的那張
 FRIENDS = {"freminet": {"name": "菲米尼", "avatar": "菲", "image": "freminet.jpg",
-                        "background": "freminet-background.jpg"}}
+                        "backgrounds": "freminet profile/Background", "background": "background.png",
+                        "peek": "freminet-peek.gif",
+                        "heart": "freminet-heart.png"}}
 NAMES = {v: k for k, v in tts.ALIASES.items()}
 
 # 模型回覆的第一行是情緒標籤，例如 [happy] 或 【開心】
@@ -44,7 +47,10 @@ FILLER = re.compile(r"^(?:(?:那個|嗯|唔|呃|啊|欸)[…，,.。？！?!\s]+
 SENTENCE = re.compile(r"[^。！？!?.]+[。！？!?….]*|[。！？!?.]+")
 MAX_CHARS = 45
 
+IMAGE_TYPES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
+
 app = Flask(__name__, static_folder=None)
+app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
 info = json.loads((tts.MODEL_DIR / "model.json").read_text(encoding="utf-8"))
 voice = {"state": "loading", "proc": None}
 lock = threading.Lock()  # 一次只處理一則訊息，顯卡只有一張
@@ -312,6 +318,41 @@ def locked_summarize(friend):
 @app.get("/avatars/<name>")
 def avatar(name):
     return send_from_directory(CHARACTER_DIR, name)
+
+
+def background_dir(friend):
+    if friend not in FRIENDS or "backgrounds" not in FRIENDS[friend]:
+        abort(404)
+    return PROJECT / FRIENDS[friend]["backgrounds"]
+
+
+@app.get("/api/backgrounds/<friend>")
+def list_backgrounds(friend):
+    folder = background_dir(friend)
+    files = [f for f in folder.glob("*") if f.suffix.lower() in IMAGE_TYPES] if folder.is_dir() else []
+    # 舊的在前，新上傳的排在最後
+    return jsonify([f.name for f in sorted(files, key=lambda f: f.stat().st_mtime)])
+
+
+@app.post("/api/backgrounds/<friend>")
+def upload_background(friend):
+    folder = background_dir(friend)
+    file = request.files.get("file")
+    name = Path(file.filename or "").name if file else ""
+    if not name or Path(name).suffix.lower() not in IMAGE_TYPES:
+        return jsonify(error="只能上傳圖片"), 400
+    folder.mkdir(parents=True, exist_ok=True)
+    # 同名就在後面加數字，不蓋掉原本的
+    target, n = folder / name, 1
+    while target.exists():
+        target, n = folder / f"{Path(name).stem} ({n}){Path(name).suffix}", n + 1
+    file.save(target)
+    return jsonify(name=target.name)
+
+
+@app.get("/backgrounds/<friend>/<name>")
+def background(friend, name):
+    return send_from_directory(background_dir(friend), name)
 
 
 @app.get("/audio/<name>")
