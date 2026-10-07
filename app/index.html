@@ -58,6 +58,8 @@
   .messages { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 7%; display: flex; flex-direction: column; gap: 4px;
     background-color: var(--wall);
     background-image: radial-gradient(rgba(0,0,0,.035) 1px, transparent 1px); background-size: 22px 22px; }
+  /* 角色自己的聊天背景，蓋一層暗色讓氣泡和日期看得清楚 */
+  .messages.photo { background: linear-gradient(rgba(8,20,32,.35), rgba(8,20,32,.35)), var(--photo) 40% center/cover no-repeat; }
   .day { align-self: center; background: #fff; color: var(--muted); font-size: 12.5px; padding: 5px 12px; border-radius: 8px; margin: 10px 0; box-shadow: 0 1px .5px rgba(11,20,26,.13); }
   .msg { max-width: min(65%, 520px); padding: 6px 8px 8px 9px; border-radius: 8px; position: relative;
     box-shadow: 0 1px .5px rgba(11,20,26,.13); word-wrap: break-word; white-space: pre-wrap; }
@@ -186,6 +188,15 @@ function setAvatar(el, friend) {
   img.src = url;
 }
 
+function setBackground(el, friend) {
+  if (!friend.background) return;
+  // 圖片不在就保留原本的底色
+  const url = `/avatars/${encodeURIComponent(friend.background)}`;
+  const img = new Image();
+  img.onload = () => { el.style.setProperty("--photo", `url("${url}")`); el.classList.add("photo"); };
+  img.src = url;
+}
+
 async function api(path, opts = {}) {
   const res = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
   const data = await res.json().catch(() => ({}));
@@ -244,6 +255,7 @@ async function openChat(friend) {
   main.innerHTML = "";
   main.append($("#chat-tpl").content.cloneNode(true));
   setAvatar($(".chat-head .avatar", main), friend);
+  setBackground($(".messages", main), friend);
   $(".chat-head .name", main).textContent = friend.name;
   updateHeader();
   renderFriends();

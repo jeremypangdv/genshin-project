@@ -11,18 +11,25 @@
 - [ ] 確定用哪個輪數
   - [x] GPT：用第 10 輪（第 15 輪聊天時常吞字，2026-10-05 換掉）
   - [ ] SoVITS：目前用第 8 輪，還沒和第 4 輪比較（`python scripts/tts.py` 裏 `/sovits e4`）
-- [x] 寫角色資料：`characters/freminet.md`（bilibili wiki + 353 句官方語音整理：身世、個性、喜好、佩伊、對其他角色的看法、情緒指引、台詞範例）
+- [x] 寫角色資料：`characters/freminet.md`（bilibili wiki + 353 句官方語音整理：身世、個性、喜好、佩伊、對其他角色的看法、情緒指引）
+  - [x] 2026-10-07 改成像朋友聊天：開頭加「怎樣聊天」的原則（先回應對方、自己的事偶爾才提），台詞範例減到 4 句，加日常聊天範例和「平時的生活」清單。之前他會照背台詞
 - [x] 聊天 App（**可以用了**，雙擊 `start_chat.bat`，見[聊天 App](#聊天-app)）
   - 類似 WhatsApp，菲米尼用語音訊息回覆，播放時顯示字幕，頭像用他的照片
   - 他會自己選情緒（9 種），用對應的參考音頻念
   - 聊天記錄會保存；吞字會自動重念
-  - 目前用本地的 `qwen3:4b-instruct` 測試
-- [ ] 在另一部電腦（RTX 5060 8GB）跑 `qwen3:14b`，這部透過 Tailscale 連過去（**下一步**，2026-10-07 決定只用本地模型，不用 API，見 [LLM](#llm)）
+  - 聊天背景是菲米尼的圖（`characters/freminet-background.jpg`）
+  - 目前用這部電腦的 `qwen3:8b` 測試（`active` 是 `ollama_8b`），之前是 `qwen3:4b-instruct`
+- [ ] 在另一部電腦（RTX 5060 8GB）跑 `qwen3:14b`，這部透過 Tailscale 連過去（**下一步**，見 [LLM](#llm)）
   - [x] 寫好 `server/install_server.ipynb` 和 `server/start_server.ipynb`（2026-10-07 從 bat 檔改成 notebook）
   - [x] 這部電腦裝好 Tailscale（2026-10-07，這部的 IP 是 `100.90.10.112`）
-  - [ ] 那部電腦裝 Tailscale（同一個帳號），跑兩個 notebook
-  - [ ] 把那部的 Tailscale IP 填進 `config/llm.json`，`active` 改成 `server`，測試連線
-  - [ ] 調角色效果
+  - [x] 那部電腦裝好 Tailscale（同一個帳號，IP 是 `100.107.228.94`），已填進 `config/llm.json` 的 `server`
+  - [ ] 那部跑兩個 notebook，`active` 改成 `server`，測試連線（2026-10-07 試的時候那部是 offline）
+  - [ ] 比較 14b 和 8b 的速度和角色效果，再決定語音要不要也搬去伺服器
+- [ ] 決定用本地模型還是 API：比較簡報 https://claude.ai/artifact/C4JQrqPKo8T9QSAaTbEwWc （8b / 14b / DeepSeek / Qwen / GPT Luna 的價格和好壞，2026-10-07）
+- [x] 給別的電腦用的準備（2026-10-07）
+  - GPT-SoVITS 的路徑寫在 `config/tts.json`
+  - `active` 是 `server` 時，`start_chat.bat` 不會開本地 Ollama，那部電腦不用裝
+  - 沒有 NVIDIA 顯卡就自動改用 CPU（能用但每句要 30 秒以上）
 - [x] 長期記憶：舊對話整理成摘要（見[聊天 App](#聊天-app)）
 
 ## 資料
@@ -162,7 +169,7 @@ python scripts/chatbox.py
 |---|---|
 | 爆顯存（OOM） | ① batch size 調成 1 → ② 去掉超過 30 秒的 5 段長音頻 → ③ 改用 v2Pro |
 | 聲音不像 | 換參考音頻，或 SoVITS 多訓練幾輪 |
-| 亂念、重複、吞字 | `tts.synthesize` 會逐句合成，某句短於每字 0.2 秒（訓練資料最快約 0.19）就重念，最多 3 次；「…」念的時候換成逗號。還是常吞字的話換用輪數比較少的 GPT 模型 |
+| 亂念、重複、吞字 | `tts.synthesize` 會逐句合成，某句比這段參考音頻平常的語速快 25% 以上（或每字短於 0.2 秒）就重念，最多 3 次。每段參考音頻語速差很多（sad 每字約 0.37 秒，calm 約 0.27 秒），所以按參考音頻記住最近 30 句的語速。少於 8 個字的短句併到下一句（「那個，好的。」常常只念出「那個」，後面變靜音）；「…」念的時候換成逗號；結巴「我…我」只念一個「我」（字幕不變）。還是常吞字的話換用輪數比較少的 GPT 模型 |
 | 訓練中途被停止（記憶體不足） | 關掉瀏覽器等程式再重跑；SoVITS 會從最近保存的輪數接着訓練。SoVITS 讀資料固定用 5 個程序（寫死在整合包的 `s2_train.py`），GPT 在 notebook 裏已調成 1 個 |
 | `No module named 'text'` | 整合包搬過位置，`runtime\Lib\site-packages\users.pth` 還是舊路徑；notebook 會自動修正，或者開一次 WebUI |
 | 雜音、電音 | 換其他輪數的 SoVITS 模型，或換參考音頻 |
@@ -178,7 +185,9 @@ python scripts/app.py
 | 檔案 | 作用 |
 |---|---|
 | `characters/freminet.jpg` | 頭像，從 `freminet profile/images.jpg` 裁出臉部。官方立繪有版權，不放進 git；沒有這張圖就顯示「菲」字 |
-| `config/llm.json` | 用哪個 LLM。改 `active` 就能換：`ollama`（這部電腦）、`server`（另一部電腦） |
+| `characters/freminet-background.jpg` | 聊天背景，從 `freminet profile/background.png` 縮成 1920 寬。一樣不放進 git；沒有這張圖就用原本的底色 |
+| `config/llm.json` | 用哪個 LLM。改 `active` 就能換：`ollama`（這部的 4b）、`ollama_8b`（這部的 8b）、`server`（另一部電腦的 14b） |
+| `config/tts.json` | GPT-SoVITS 整合包的路徑，每部電腦不同。路徑用 `/` 分隔 |
 | `characters/freminet.md` | 角色資料，每則訊息都會整份放進系統提示。改完不用重開 app，下一則訊息就會用新的 |
 | `scripts/llm.py` | 呼叫 LLM，用 Ollama 的 OpenAI 格式介面 |
 | `scripts/app.py` | 伺服器：LLM 回覆 → 拆出情緒 → GPT-SoVITS 念出來 |
@@ -195,6 +204,9 @@ python scripts/app.py
 - 和 GPT-SoVITS 一起用大約佔 5.5GB 顯存
 - 速度：啟動（載入 + 預熱）約 1–2 分鐘；打開後短回覆約 5 秒，5 句左右的長回覆約 13 秒（逐句合成，吞字還要重念）
 - 模型回覆第一行是情緒標籤（例如 `[shy]`），用來選參考音頻；（笑）、*低頭* 這類動作描寫會自動拿掉，不會念出來
+- 小模型的毛病，提示裏禁不掉，所以在程式裏處理：
+  - 回覆夾英文（`maybe`、`usually`）就重新生成，最多 3 次
+  - 最近兩句已經用「那個…」「嗯…」這類語氣詞開頭的話，這句開頭的語氣詞會去掉，不會每句都「那個…」
 - **用另一部電腦的模型**：見 [LLM 伺服器](#llm-伺服器)，把 `active` 改成 `server`
 - `no_think`：傳 `reasoning_effort: "none"`，`qwen3:14b` 這類混合模型就不會先「思考」把回覆字數用完。實測在提示寫 `/no_think` 沒用；`qwen3:4b`（現在是 2507 只會思考的版本）怎樣都關不掉
 
@@ -210,12 +222,13 @@ python scripts/app.py
 
 ### LLM
 
-- **只用本地模型，不用 API**（2026-10-07 決定）
+- 2026-10-07 本來決定只用本地模型，之後重新比較本地和 API，見[比較簡報](https://claude.ai/artifact/C4JQrqPKo8T9QSAaTbEwWc)。還沒決定
 - 這部電腦的 6GB 顯存要留給 GPT-SoVITS，所以 LLM 放在另一部電腦（RTX 5060 Laptop 8GB、16GB 記憶體）跑 `qwen3:14b`
   - 14B 角色扮演算及格：聊久了可能忘記角色、對原神設定知道得少
   - 想更好：記憶體加到 32GB，換 30B-A3B 這類 MoE 模型
-- 這部電腦的 `qwen3:4b-instruct` 留着做測試
-- 角色像不像主要看提示詞：已經從 353 句官方台詞挑了範例，寫在 `characters/freminet.md`
+- 這部電腦的 `qwen3:4b-instruct` 和 `qwen3:8b` 留着做測試。8b 在這部會有大約 17% 放在 CPU 跑（顯存要分給 GPT-SoVITS），短回覆約 2–4 秒
+- 8b 的限制：緊張時結巴偏多、偶爾夾英文、很愛照抄提示裏的範例內容（範例寫「看到幽光星星」，他每次都說這句）
+- 角色像不像主要看提示詞，寫在 `characters/freminet.md`
 
 ### LLM 伺服器
 
