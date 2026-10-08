@@ -69,13 +69,13 @@ def call(name, messages):
 
 
 def is_local():
-    """Whether the active model runs on this computer, so start_chat.bat knows to start Ollama."""
+    """Whether the active model runs on this computer, so Freminet Chat.exe knows to start Ollama."""
     cfg = load_config()
     url = cfg["providers"][cfg["active"]]["base_url"]
     return any(host in url for host in ("://127.0.0.1", "://localhost"))
 
 
 if __name__ == "__main__":
-    # start_chat.bat 用：python scripts\llm.py --is-local，本地的話 exit code 0
+    # Freminet Chat.exe（scripts/launcher.py）用：python scripts\llm.py --is-local，本地的話 exit code 0
     if sys.argv[1:] == ["--is-local"]:
         sys.exit(0 if is_local() else 1)

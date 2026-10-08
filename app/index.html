@@ -114,6 +114,8 @@
   .bg-btn { flex: 1; padding: 8px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font: inherit;
     font-size: 13px; text-align: center; text-decoration: none; cursor: pointer; }
   .bg-btn.alt { background: var(--panel-2); color: var(--text); }
+  .bg-btn.danger { background: var(--panel-2); color: var(--error); }
+  .bg-btn.danger.confirm { background: var(--error); color: #fff; }
   .bg-btn[aria-disabled=true] { opacity: .4; pointer-events: none; }
   .bg-hint { font-size: 11.5px; color: var(--muted); text-align: center; margin-top: 8px; }
 
@@ -195,8 +197,9 @@
     <div class="bg-info"><span class="bg-name"></span><span class="bg-count"></span></div>
     <div class="bg-actions">
       <a class="bg-btn" data-bg="download">下載</a>
-      <button class="bg-btn alt" data-bg="upload">上傳</button>
-      <input type="file" accept="image/*" hidden>
+      <button class="bg-btn alt" data-bg="upload" title="JPG、JPEG 或 PNG，至少 860×860">上傳</button>
+      <input type="file" accept=".jpg,.jpeg,.png" multiple hidden>
+      <button class="bg-btn danger" data-bg="delete" title="從資料夾刪除這張圖">刪除</button>
     </div>
     <div class="bg-hint">在這裏滾動滑鼠滾輪可以快速切換</div>
   </div>
@@ -257,7 +260,7 @@ function setAvatar(el, friend) {
 // 聊天背景：從 Background 資料夾挑一張，選過的記在瀏覽器裏，下次打開還是那張
 async function setupBackgrounds(main, friend) {
   const box = $(".messages", main), panel = $(".bg-panel", main), thumb = $(".bg-thumb", panel);
-  const dl = $("[data-bg=download]", panel), file = $("input[type=file]", panel);
+  const dl = $("[data-bg=download]", panel), del = $("[data-bg=delete]", panel), file = $("input[type=file]", panel);
   const key = `background:${friend.id}`;
   const url = name => `/backgrounds/${friend.id}/${encodeURIComponent(name)}`;
   let list = [], i = 0, shown = 0;
@@ -265,8 +268,11 @@ async function setupBackgrounds(main, friend) {
   const show = () => {
     const name = list[i];
     $(".bg-name", panel).textContent = name || "資料夾裏沒有圖片";
+    $(".bg-name", panel).title = "";
     $(".bg-count", panel).textContent = name ? `${i + 1} / ${list.length}` : "";
     dl.setAttribute("aria-disabled", !name);
+    del.setAttribute("aria-disabled", !name);
+    unconfirm();
     if (!name) { box.classList.remove("photo"); thumb.style.backgroundImage = ""; return; }
     dl.href = url(name);
     dl.download = name;
@@ -281,6 +287,9 @@ async function setupBackgrounds(main, friend) {
     };
     img.src = url(name);
   };
+  // 刪除要按兩次：第一次變成「確定刪除？」，換圖或過 3 秒就變回來
+  let confirmTimer;
+  const unconfirm = () => { clearTimeout(confirmTimer); del.classList.remove("confirm"); del.textContent = "刪除"; };
   const go = d => { if (list.length) { i = (i + d + list.length) % list.length; show(); } };
   const load = async pick => {
     list = await api(`/api/backgrounds/${friend.id}`).catch(() => []);
@@ -301,17 +310,47 @@ async function setupBackgrounds(main, friend) {
     while (Math.abs(acc) >= 50) { go(Math.sign(acc)); acc -= 50 * Math.sign(acc); }
   }, { passive: false });
   $("[data-bg=upload]", panel).onclick = () => file.click();
-  file.onchange = async () => {
-    if (!file.files[0]) return;
-    const body = new FormData();
-    body.append("file", file.files[0]);
-    file.value = "";
+  del.onclick = async () => {
+    const name = list[i];
+    if (!name) return;
+    if (!del.classList.contains("confirm")) {
+      del.classList.add("confirm");
+      del.textContent = "確定刪除？";
+      confirmTimer = setTimeout(unconfirm, 3000);
+      return;
+    }
     try {
-      const res = await fetch(`/api/backgrounds/${friend.id}`, { method: "POST", body });
+      const res = await fetch(`/api/backgrounds/${friend.id}/${encodeURIComponent(name)}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      await load(data.name);
-    } catch (e) { $(".bg-name", panel).textContent = `上傳失敗：${e.message}`; }
+      // 刪掉後顯示原本的下一張
+      await load(list[(i + 1) % list.length]);
+    } catch (e) { unconfirm(); $(".bg-name", panel).textContent = `刪除失敗：${e.message}`; }
+  };
+  file.onchange = async () => {
+    // 可以一次選多張，一張一張傳；不合要求的跳過，最後顯示最後傳好的那張
+    const picked = [...file.files];
+    file.value = "";
+    if (!picked.length) return;
+    let last = null;
+    const failed = [];
+    for (const [n, f] of picked.entries()) {
+      $(".bg-name", panel).textContent = `上傳中 ${n + 1} / ${picked.length}…`;
+      const body = new FormData();
+      body.append("file", f);
+      try {
+        const res = await fetch(`/api/backgrounds/${friend.id}`, { method: "POST", body });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        last = data.name;
+      } catch (e) { failed.push(`${f.name}：${e.message}`); }
+    }
+    await load(last ?? list[i]);
+    if (failed.length) {
+      const name = $(".bg-name", panel);
+      name.textContent = `${failed.length} 張上傳失敗（滑鼠停在這裏看原因）`;
+      name.title = failed.join("\n");
+    }
   };
 
   let saved = null;
@@ -589,6 +628,9 @@ $("#search").oninput = renderFriends;
 refreshStatus();
 // 沒有好友列表，直接打開第一個好友的聊天
 loadFriends().then(() => state.friends[0] && openChat(state.friends[0]));
+// 用 exe 開的視窗：開着時定時告訴伺服器，關掉時說再見，伺服器才知道要不要關
+addEventListener("pagehide", () => navigator.sendBeacon("/api/bye"));
+setInterval(() => fetch("/api/ping").catch(() => {}), 20000);
 </script>
 </body>
 </html>

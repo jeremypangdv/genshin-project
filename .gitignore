@@ -8,3 +8,8 @@ characters/*.jpg
 characters/*.gif
 characters/*.png
 freminet profile/
+
+# build_exe.bat 做出來的
+build/
+Freminet Chat.exe
+app.log

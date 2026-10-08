@@ -13,7 +13,9 @@
   - [ ] SoVITS：目前用第 8 輪，還沒和第 4 輪比較（`python scripts/tts.py` 裏 `/sovits e4`）
 - [x] 寫角色資料：`characters/freminet.md`（bilibili wiki + 353 句官方語音整理：身世、個性、喜好、佩伊、對其他角色的看法、情緒指引）
   - [x] 2026-10-07 改成像朋友聊天：開頭加「怎樣聊天」的原則（先回應對方、自己的事偶爾才提），台詞範例減到 4 句，加日常聊天範例和「平時的生活」清單。之前他會照背台詞
-- [x] 聊天 App（**可以用了**，雙擊 `start_chat.bat`，見[聊天 App](#聊天-app)）
+- [x] 聊天 App（**可以用了**，雙擊 `Freminet Chat.exe`，見[聊天 App](#聊天-app)）
+  - 2026-10-08：做成 exe，用自己的視窗打開（860×860 正方形，像電腦版聊天軟件），不開瀏覽器；拿掉 `start_chat.bat`
+  - 2026-10-08：背景可以一次上傳多張、可以刪除；上傳只收 JPG / PNG，至少 860×860
   - 類似 WhatsApp，菲米尼用語音訊息回覆，播放時顯示字幕，頭像用他的照片
   - 他會自己選情緒（9 種），用對應的參考音頻念
   - 聊天記錄會保存；吞字會自動重念
@@ -28,7 +30,7 @@
 - [ ] 決定用本地模型還是 API：比較簡報 https://claude.ai/artifact/C4JQrqPKo8T9QSAaTbEwWc （8b / 14b / DeepSeek / Qwen / GPT Luna 的價格和好壞，2026-10-07）
 - [x] 給別的電腦用的準備（2026-10-07）
   - GPT-SoVITS 的路徑寫在 `config/tts.json`
-  - `active` 是 `server` 時，`start_chat.bat` 不會開本地 Ollama，那部電腦不用裝
+  - `active` 是 `server` 時，`Freminet Chat.exe` 不會開本地 Ollama，那部電腦不用裝
   - 沒有 NVIDIA 顯卡就自動改用 CPU（能用但每句要 30 秒以上）
 - [x] 長期記憶：舊對話整理成摘要（見[聊天 App](#聊天-app)）
 
@@ -180,7 +182,14 @@ python scripts/chatbox.py
 python scripts/app.py
 ```
 
-打開 http://127.0.0.1:5000 。或者直接雙擊 `start_chat.bat`：會順便開 Ollama，關掉黑色視窗就會關掉伺服器。啟動時黑色視窗會先載入語音模型，再各送一句測試給語音模型和 LLM 預熱（不會記進聊天記錄），全部完成才自動打開瀏覽器，打開就能直接聊。類似 WhatsApp：打開就是和菲米尼的聊天（鋪滿整個視窗，沒有好友列表），傳訊息，他用語音訊息回覆；按播放時，語音下面會跟着進度顯示字幕。
+打開 http://127.0.0.1:5000 。
+
+**平時用：雙擊 `Freminet Chat.exe`**。會順便開 Ollama（用本地模型時），沒有黑色視窗，直接開一個聊天大小的視窗（Edge 的 app 模式，沒有分頁和網址列，可以自己拉大小），模型載入時先顯示「菲米尼正在準備…」，好了自動換成聊天畫面；關掉視窗就會關掉伺服器和語音模型（聊天畫面每 20 秒告訴伺服器視窗還開着，不看 Edge 程序，因為 Edge 關了視窗可能還留在背景）。已經開着時再雙擊 exe，會多開一個視窗。
+- exe 不放進 git，用 `build_exe.bat` 做（會裝 PyInstaller，圖示用 `characters/freminet.jpg`）。exe 要放在專案資料夾裏，電腦要有 Python（在 PATH 裏）
+- 程式輸出記在 `app.log`；出錯會跳出提示
+- 視窗大小改 `scripts/app.py` 的 `WINDOW_SIZE`；選過的背景記在 `%LOCALAPPDATA%\FreminetChat\edge`
+
+啟動時先載入語音模型，再各送一句測試給語音模型和 LLM 預熱（不會記進聊天記錄），全部完成才換成聊天畫面，打開就能直接聊。類似 WhatsApp：打開就是和菲米尼的聊天（鋪滿整個視窗，沒有好友列表），傳訊息，他用語音訊息回覆；按播放時，語音下面會跟着進度顯示字幕。
 
 | 檔案 | 作用 |
 |---|---|
@@ -194,17 +203,19 @@ python scripts/app.py
 | `scripts/llm.py` | 呼叫 LLM，用 Ollama 的 OpenAI 格式介面 |
 | `scripts/app.py` | 伺服器：LLM 回覆 → 拆出情緒 → GPT-SoVITS 念出來 |
 | `app/index.html` | 聊天介面 |
+| `app/loading.html` | exe 打開時，模型還在載入的畫面 |
+| `scripts/launcher.py` | `Freminet Chat.exe` 的程式：用本地模型時先開 Ollama，再在背景跑 `app.py --window` |
 | `chats/` | 聊天記錄（不放進 git）；介面右上角垃圾桶可以清除，連摘要一起清 |
 | `chats/<角色>.memory.json` | 舊對話的摘要，和 `upto`（摘要包括到第幾則訊息） |
 
 - **介面右上角**（由左到右）：
-  - ⚙ 聊天背景：小窗裏用左右箭頭或滑鼠滾輪切換，外面的背景即時跟着換；可以下載目前這張，或上傳新圖（存進 `freminet profile/Background/`，同名會自動改名）。選過的那張記在瀏覽器裏
+  - ⚙ 聊天背景：小窗裏用左右箭頭或滑鼠滾輪切換，外面的背景即時跟着換；可以下載目前這張，或上傳新圖（存進 `freminet profile/Background/`，同名會自動改名）。可以一次選多張上傳，不合要求的會跳過（滑鼠停在失敗訊息上看原因）。上傳只收 JPG / JPEG / PNG，長和寬都至少要和視窗一樣（860×860），鋪滿時才不會拉大變模糊；改了 `WINDOW_SIZE` 的話，`app/index.html` 上傳按鈕的提示也要改。「刪除」會把目前這張從資料夾真的刪掉（要按兩次確認），刪完顯示下一張。選過的那張記在視窗的設定資料夾裏
   - 👁 隱藏聊天記錄：拿掉暗色那層，只看背景圖，再按一次回來
   - 🗑 清除聊天記錄
 - **探頭的菲米尼**：每隔 3–9 秒在輸入欄上面隨機位置出現，待 2.5–5 秒縮回去；點他會馬上躲起來並飄出愛心。大小改 `app/index.html` 裏 `.peek` 的 `width`（改大的話 `.hole` 的 `height` 也要加）
 - 角色的圖片設定在 `scripts/app.py` 的 `FRIENDS`：`image` 頭像、`backgrounds` 背景資料夾、`background` 預設背景、`peek` 探頭 gif、`heart` 愛心
 - **本地測試用 `qwen3:4b-instruct`**（Ollama，2.5GB）。不要用 `qwen3:4b`：它會先「思考」，Ollama 的 OpenAI 介面關不掉，回覆會變成空的
-- `start_chat.bat` 設了 `OLLAMA_KEEP_ALIVE=-1`，LLM 不會閒置 5 分鐘就被卸載（只在 bat 自己開 Ollama 時有效）
+- exe 開 Ollama 時設了 `OLLAMA_KEEP_ALIVE=-1`，LLM 不會閒置 5 分鐘就被卸載（只在 exe 自己開 Ollama 時有效）
 - **記憶**：原文最多傳 `history_turns` 輪（這部 8 輪，server 12 輪）。超過了就把較舊的一半整理成摘要（400 字以內），放在系統提示最後，原文只留最近一半。
   - 一次砍一半，不是每則訊息去掉一輪，這樣傳給 LLM 的內容幾則訊息內都不變，Ollama 的快取能命中
   - 摘要在回覆送出後於背景整理；聊天記錄本身不會刪，介面還是看得到全部
@@ -258,7 +269,7 @@ python scripts/app.py
 
 這部電腦的 `config/llm.json`：`server.base_url` 填那部的 IP，`active` 改成 `server`（只改一次）。
 
-之後每次：先在那部跑 `start_server.ipynb`，再開這部的 `start_chat.bat`。順序反了的話 LLM 預熱會失敗，第一則訊息要多等十幾秒載入。
+之後每次：先在那部跑 `start_server.ipynb`，再開這部的 `Freminet Chat.exe`。順序反了的話 LLM 預熱會失敗，第一則訊息要多等十幾秒載入。
 
 - 防火牆規則只讓同一個網絡和 Tailscale（`100.64.0.0/10`）的電腦連入，不分私人／公用網絡（Windows 新連的 Wi-Fi 預設是公用）
 - **直接關掉 VS Code 伺服器不會停**：要停就按 `start_server.ipynb` 開伺服器那格的 ■

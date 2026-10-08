@@ -1,6 +1,7 @@
 """WhatsApp-style chat app: message Freminet, he answers with a voice message.
 
-    python scripts/app.py      then open http://127.0.0.1:5000
+    python scripts/app.py            then open http://127.0.0.1:5000
+    python scripts/app.py --window   open it in its own window instead (used by Freminet Chat.exe)
 
 The reply text comes from the LLM in config/llm.json, in the character set out
 in characters/freminet.md, and is read out by GPT-SoVITS with the exported model
@@ -9,12 +10,17 @@ in Models/Freminet/. Chats are saved in chats/, audio in tts_output/.
 
 import atexit
 import json
+import logging
+import os
 import re
+import subprocess
+import sys
 import threading
 import time
 import webbrowser
 from pathlib import Path
 
+from PIL import Image, UnidentifiedImageError
 from flask import Flask, abort, jsonify, request, send_from_directory
 
 import llm
@@ -48,11 +54,14 @@ SENTENCE = re.compile(r"[^。！？!?.]+[。！？!?….]*|[。！？!?.]+")
 MAX_CHARS = 45
 
 IMAGE_TYPES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
+# 上傳的背景只收 JPG / PNG，長和寬都至少要和聊天視窗一樣大，鋪滿時才不會被拉大變模糊
+UPLOAD_FORMATS = {"JPEG", "PNG"}
 
 app = Flask(__name__, static_folder=None)
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
 info = json.loads((tts.MODEL_DIR / "model.json").read_text(encoding="utf-8"))
 voice = {"state": "loading", "proc": None}
+started = threading.Event()  # 模型載入、預熱完了
 lock = threading.Lock()  # 一次只處理一則訊息，顯卡只有一張
 
 
@@ -242,7 +251,13 @@ def llm_messages(friend, messages):
 
 @app.get("/")
 def index():
-    return send_from_directory(APP_DIR, "index.html")
+    # --window 時視窗一開始就打開，模型還在載入就先顯示載入畫面
+    return send_from_directory(APP_DIR, "index.html" if started.is_set() else "loading.html")
+
+
+@app.get("/api/ready")
+def ready():
+    return jsonify(ready=started.is_set())
 
 
 @app.get("/api/status")
@@ -339,8 +354,19 @@ def upload_background(friend):
     folder = background_dir(friend)
     file = request.files.get("file")
     name = Path(file.filename or "").name if file else ""
-    if not name or Path(name).suffix.lower() not in IMAGE_TYPES:
-        return jsonify(error="只能上傳圖片"), 400
+    if not name or Path(name).suffix.lower() not in {".jpg", ".jpeg", ".png"}:
+        return jsonify(error="只能上傳 JPG、JPEG 或 PNG"), 400
+    try:
+        with Image.open(file.stream) as img:
+            fmt, (w, h) = img.format, img.size
+    except UnidentifiedImageError:
+        return jsonify(error="圖片壞了，打不開"), 400
+    if fmt not in UPLOAD_FORMATS:
+        return jsonify(error=f"只能上傳 JPG、JPEG 或 PNG，這張其實是 {fmt}"), 400
+    min_w, min_h = WINDOW_SIZE
+    if w < min_w or h < min_h:
+        return jsonify(error=f"圖片太小（{w}×{h}），長和寬都要至少 {min_w}×{min_h}"), 400
+    file.stream.seek(0)
     folder.mkdir(parents=True, exist_ok=True)
     # 同名就在後面加數字，不蓋掉原本的
     target, n = folder / name, 1
@@ -348,6 +374,15 @@ def upload_background(friend):
         target, n = folder / f"{Path(name).stem} ({n}){Path(name).suffix}", n + 1
     file.save(target)
     return jsonify(name=target.name)
+
+
+@app.delete("/api/backgrounds/<friend>/<name>")
+def delete_background(friend, name):
+    target = background_dir(friend) / Path(name).name
+    if target.suffix.lower() not in IMAGE_TYPES or not target.is_file():
+        return jsonify(error="找不到這張圖"), 404
+    target.unlink()
+    return jsonify(ok=True)
 
 
 @app.get("/backgrounds/<friend>/<name>")
@@ -360,7 +395,13 @@ def audio(name):
     return send_from_directory(tts.OUTPUT_DIR, name)
 
 
-if __name__ == "__main__":
+# 聊天視窗的大小，正方形，和電腦版聊天軟件差不多
+WINDOW_SIZE = (860, 860)
+EDGE = [Path(os.environ.get(k, "")) / "Microsoft/Edge/Application/msedge.exe"
+        for k in ("ProgramFiles(x86)", "ProgramFiles", "LOCALAPPDATA")]
+
+
+def start():
     print(f"LLM：{llm.describe()}")
     # 先把模型載入和預熱好才開聊天，打開時就能直接聊
     load_voice()
@@ -368,5 +409,73 @@ if __name__ == "__main__":
         print("語音模型載入失敗，聊天只會有文字")
     warm_up()
     print("準備好了，打開 http://127.0.0.1:5000")
-    threading.Timer(1, webbrowser.open, ["http://127.0.0.1:5000"]).start()
+    started.set()
+
+
+def open_window():
+    """Open the chat in its own Edge app window (no tabs or address bar)."""
+    edge = next((e for e in EDGE if e.is_file()), None)
+    if not edge:
+        print("找不到 Edge，改用瀏覽器打開")
+        webbrowser.open("http://127.0.0.1:5000")
+        return
+    # 獨立的設定資料夾，不和平常用的 Edge 混在一起；選過的背景也記在這裏
+    profile = Path(os.environ["LOCALAPPDATA"]) / "FreminetChat" / "edge"
+    subprocess.Popen([str(edge), "--app=http://127.0.0.1:5000", f"--user-data-dir={profile}",
+                      "--window-size={},{}".format(*WINDOW_SIZE), "--no-first-run",
+                      "--no-default-browser-check", "--autoplay-policy=no-user-gesture-required"])
+
+
+# --window 時，視窗關掉就關伺服器。Edge 關了視窗程序可能還在背景，所以不看 Edge，
+# 改看聊天畫面：開着時每 20 秒會問一次 /api/ping，關掉時送 /api/bye
+seen = {"last": time.time(), "bye": None}
+IDLE_LIMIT = 150  # 視窗縮到最小時瀏覽器一分鐘才跑一次計時器，要留多一點
+
+
+@app.before_request
+def mark_seen():
+    seen["last"] = time.time()
+
+
+@app.get("/api/ping")
+def ping():
+    return jsonify(ok=True)
+
+
+@app.post("/api/bye")
+def bye():
+    seen["bye"] = time.time()
+    return jsonify(ok=True)
+
+
+@app.post("/api/open")
+def open_again():
+    # 已經在跑時再雙擊 exe，就多開一個視窗
+    open_window()
+    return jsonify(ok=True)
+
+
+def watch_window():
+    while True:
+        time.sleep(1)
+        now = time.time()
+        # 送了 bye 之後 5 秒內沒有新的請求（重新整理會馬上有），就是視窗關掉了
+        closed = seen["bye"] and seen["last"] <= seen["bye"] and now - seen["bye"] > 5
+        if closed or now - seen["last"] > IDLE_LIMIT:
+            print("視窗關掉了，關閉伺服器")
+            stop_voice()
+            os._exit(0)
+
+
+if __name__ == "__main__":
+    # 載入畫面每秒問一次好了沒、聊天畫面定時 ping，不要寫進記錄
+    logging.getLogger("werkzeug").addFilter(
+        lambda r: not any(a in r.getMessage() for a in ("/api/ready", "/api/ping", "/api/bye")))
+    if "--window" in sys.argv:
+        threading.Thread(target=start, daemon=True).start()
+        threading.Thread(target=watch_window, daemon=True).start()
+        threading.Timer(0.5, open_window).start()
+    else:
+        start()
+        threading.Timer(1, webbrowser.open, ["http://127.0.0.1:5000"]).start()
     app.run(host="127.0.0.1", port=5000, threaded=True)

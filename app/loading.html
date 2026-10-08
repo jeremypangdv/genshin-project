@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>Teyvat Chat</title>
+<style>
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 18px;
+    background: #efeae2; color: #667781;
+    font: 15px/1.4 "Segoe UI", "Microsoft JhengHei", "PingFang TC", sans-serif;
+  }
+  .avatar { width: 96px; height: 96px; border-radius: 50%; object-fit: cover; background: #dfe5e7; }
+  .dots span { animation: blink 1.4s infinite; }
+  .dots span:nth-child(2) { animation-delay: .2s; }
+  .dots span:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 0%, 80%, 100% { opacity: .2; } 40% { opacity: 1; } }
+</style>
+</head>
+<body>
+  <img class="avatar" src="/avatars/freminet.jpg" alt="" onerror="this.style.visibility='hidden'">
+  <div>菲米尼正在準備<span class="dots"><span>.</span><span>.</span><span>.</span></span></div>
+  <div style="font-size:13px">第一次大約要 1–2 分鐘</div>
+<script>
+  // 模型載入、預熱完就換成聊天畫面
+  setInterval(async () => {
+    try {
+      if ((await (await fetch("/api/ready")).json()).ready) location.reload();
+    } catch {}
+  }, 1000);
+  // 用 exe 開的視窗：開着時定時告訴伺服器，關掉時說再見，伺服器才知道要不要關
+  addEventListener("pagehide", () => navigator.sendBeacon("/api/bye"));
+</script>
+</body>
+</html>
