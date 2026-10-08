@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <!-- 一般鼠標：冰藍色箭頭，深藍描邊，尾巴一顆金色小星 -->
+  <defs>
+    <linearGradient id="ice" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#8fd0ee"/>
+    </linearGradient>
+  </defs>
+  <path d="M3 2 L3 24 L8.6 18.8 L12.4 27.6 L16.4 25.9 L12.6 17.3 L20 17.3 Z"
+        fill="url(#ice)" stroke="#1f3a5f" stroke-width="1.6" stroke-linejoin="round"/>
+  <path d="M5.2 7 L5.2 18.5" stroke="#ffffff" stroke-width="1.2" stroke-linecap="round" opacity=".9"/>
+  <path d="M25 21 L26.2 24 L29.2 25.2 L26.2 26.4 L25 29.4 L23.8 26.4 L20.8 25.2 L23.8 24 Z"
+        fill="#e2bd6c" stroke="#8a6a2a" stroke-width=".8" stroke-linejoin="round"/>
+</svg>

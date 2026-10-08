@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <!-- 打字：深藍 I 字，白色外框在深色背景也看得到，中間一顆冰藍小菱形 -->
+  <path d="M11 5 Q16 5 16 8 Q16 5 21 5 M16 8 L16 24 M11 27 Q16 27 16 24 Q16 27 21 27"
+        fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M11 5 Q16 5 16 8 Q16 5 21 5 M16 8 L16 24 M11 27 Q16 27 16 24 Q16 27 21 27"
+        fill="none" stroke="#1f3a5f" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M16 13 L18.4 16 L16 19 L13.6 16 Z" fill="#8fd0ee" stroke="#1f3a5f" stroke-width="1"/>
+</svg>

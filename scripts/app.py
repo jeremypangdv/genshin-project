@@ -258,6 +258,11 @@ def index():
     return send_from_directory(APP_DIR, "index.html" if started.is_set() else "loading.html")
 
 
+@app.get("/cursors/<name>")
+def cursor(name):
+    return send_from_directory(APP_DIR / "cursors", name)
+
+
 @app.get("/api/ready")
 def ready():
     return jsonify(ready=started.is_set())
