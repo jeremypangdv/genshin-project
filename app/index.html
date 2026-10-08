@@ -427,9 +427,11 @@ function startBuddy(friend) {
     if (img.parentNode) return;
     document.body.append(img);
     addEventListener("mousemove", e => {
-      const want = pics[kindAt(e.target)] || pics.normal;
+      const kind = kindAt(e.target), want = pics[kind] || pics.normal;
       if (img.src !== new URL(want, location).href) img.src = want;
-      tx = e.clientX + 16; ty = e.clientY + 18;
+      // 指着輸入欄時放在右上角，放右下角會擋住下面的字
+      tx = e.clientX + 16;
+      ty = kind === "text" ? e.clientY - img.offsetHeight - 8 : e.clientY + 18;
       if (!img.classList.contains("on")) { x = tx; y = ty; img.classList.add("on"); }
     });
     document.documentElement.addEventListener("mouseleave", () => img.classList.remove("on"));
