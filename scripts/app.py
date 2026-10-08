@@ -32,9 +32,12 @@ CHAT_DIR = PROJECT / "chats"
 CHARACTER_DIR = PROJECT / "characters"
 # avatar 是沒有頭像圖片時顯示的字；image 放在 characters/ 裏
 # backgrounds 是聊天背景圖的資料夾，background 是還沒選過時預設用的那張
+# cursor 是跟着滑鼠的小圖；指着可以點的東西時換 cursor_click，指着輸入欄時換 cursor_text
 FRIENDS = {"freminet": {"name": "菲米尼", "avatar": "菲", "image": "freminet.jpg",
                         "backgrounds": "freminet profile/Background", "background": "background.png",
                         "peek": "freminet-peek.gif",
+                        "cursor": "freminet-cursor.png", "cursor_click": "freminet-cursor-click.png",
+                        "cursor_text": "freminet-cursor-text.png",
                         "heart": "freminet-heart.png"}}
 NAMES = {v: k for k, v in tts.ALIASES.items()}
 

@@ -77,7 +77,10 @@
   .voice { width: 330px; max-width: 100%; white-space: normal; }
   .voice .player { display: flex; align-items: center; gap: 10px; }
   .voice .play { width: 34px; height: 34px; border: 0; border-radius: 50%; background: none; color: #54656f; cursor: pointer; display: grid; place-items: center; flex: none; }
-  .voice .play:hover { background: rgba(0,0,0,.05); }
+  .voice .play:hover, .voice .dl:hover { background: rgba(0,0,0,.05); }
+  /* 下載這段語音 */
+  .voice .dl { width: 28px; height: 28px; border-radius: 50%; color: #54656f; display: grid; place-items: center; flex: none; }
+  .voice .dl[hidden] { display: none; }
   .voice .wave { flex: 1; height: 30px; display: flex; align-items: center; gap: 2px; cursor: pointer; }
   .voice .wave i { flex: 1; background: var(--wave); border-radius: 2px; min-height: 3px; }
   .voice .wave i.on { background: var(--accent); }
@@ -85,7 +88,7 @@
   .voice .avatar::after { content: ""; position: absolute; right: -2px; bottom: -2px; width: 18px; height: 18px; border-radius: 50%;
     background: var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3E%3Cpath d='M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11z'/%3E%3C/svg%3E") center/12px no-repeat;
     border: 2px solid var(--in); }
-  .voice .info { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); padding: 2px 0 0 44px; margin-right: 56px; }
+  .voice .info { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); padding: 2px 0 0 44px; margin-right: 94px; }
   .voice .sub { margin: 6px 2px 0; padding-top: 6px; border-top: 1px solid var(--line); font-size: 14px; color: var(--text); white-space: pre-wrap; }
   .voice .sub[hidden] { display: none; }
   .voice .sub .rest { color: transparent; }
@@ -119,6 +122,10 @@
   .bg-btn[aria-disabled=true] { opacity: .4; pointer-events: none; }
   .bg-hint { font-size: 11.5px; color: var(--muted); text-align: center; margin-top: 8px; }
 
+  /* 跟着滑鼠的小菲米尼，不擋點擊 */
+  .buddy { position: fixed; left: 0; top: 0; width: 44px; z-index: 50; pointer-events: none;
+    opacity: 0; transition: opacity .2s; will-change: transform; }
+  .buddy.on { opacity: 1; }
   .peek-zone { position: relative; height: 0; z-index: 1; }
   .peek-zone .hole { position: absolute; left: 0; right: 0; bottom: 0; height: 200px; overflow: hidden; pointer-events: none; }
   .peek { position: absolute; bottom: -27px; width: 180px; transform: translateY(110%); cursor: pointer;
@@ -394,6 +401,49 @@ function startPeek(hole, friend) {
   img.src = `/avatars/${encodeURIComponent(friend.peek)}`;
 }
 
+// 小菲米尼跟在滑鼠右下角，慢半拍追上去；滑鼠離開視窗就淡出
+// 指着可以點的東西換 cursor_click，指着輸入欄換 cursor_text；那兩張不在就一直用 cursor
+function startBuddy(friend) {
+  if (!friend.cursor || $(".buddy")) return;
+  const img = new Image();
+  img.className = "buddy";
+  img.alt = "";
+  let x = -100, y = -100, tx = x, ty = y;
+  const src = name => `/avatars/${encodeURIComponent(name)}`;
+  const pics = { normal: src(friend.cursor) };
+  for (const kind of ["click", "text"]) {
+    const name = friend[`cursor_${kind}`];
+    if (!name) continue;
+    const pre = new Image();
+    pre.onload = () => { pics[kind] = pre.src; };  // 先載好，換的時候不會閃
+    pre.src = src(name);
+  }
+  const kindAt = el => {
+    const c = getComputedStyle(el).cursor;
+    if (c === "text" || (c === "auto" && el.matches("input, textarea, [contenteditable]"))) return "text";
+    return c === "pointer" ? "click" : "normal";
+  };
+  img.onload = () => {
+    if (img.parentNode) return;
+    document.body.append(img);
+    addEventListener("mousemove", e => {
+      const want = pics[kindAt(e.target)] || pics.normal;
+      if (img.src !== new URL(want, location).href) img.src = want;
+      tx = e.clientX + 16; ty = e.clientY + 18;
+      if (!img.classList.contains("on")) { x = tx; y = ty; img.classList.add("on"); }
+    });
+    document.documentElement.addEventListener("mouseleave", () => img.classList.remove("on"));
+    const step = () => {
+      x += (tx - x) * 0.25; y += (ty - y) * 0.25;
+      img.style.transform = `translate(${x}px, ${y}px)`;
+      requestAnimationFrame(step);
+    };
+    step();
+  };
+  // 圖片不在就不出現
+  img.src = pics.normal;
+}
+
 // 從 x 這個位置飄出幾顆愛心，往上散開慢慢消失
 function hearts(zone, x, friend) {
   if (!friend.heart) return;
@@ -469,6 +519,7 @@ async function openChat(friend) {
   setAvatar($(".chat-head .avatar", main), friend);
   setupBackgrounds(main, friend);
   startPeek($(".peek-zone .hole", main), friend);
+  startBuddy(friend);
   $(".chat-head .name", main).textContent = friend.name;
   updateHeader();
   renderFriends();
@@ -535,6 +586,7 @@ function voiceBubble(el, m) {
     <div class="player">
       <button class="play" title="播放">${ICON_PLAY}</button>
       <div class="wave">${bars(m.audio || m.text).map(h => `<i style="height:${h}%"></i>`).join("")}</div>
+      <a class="dl" title="下載語音" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg></a>
       <div class="avatar"></div>
     </div>
     <div class="info"><span class="dur">0:00</span><span class="emotion">${emotion}</span></div>
@@ -555,6 +607,10 @@ function voiceBubble(el, m) {
   }
 
   const audio = new Audio(`/audio/${encodeURIComponent(m.audio)}`);
+  const dl = $(".dl", el);
+  dl.href = audio.src;
+  dl.download = `${state.current.name}-${m.audio}`;
+  dl.hidden = false;
   audio.preload = "metadata";
   audio.onloadedmetadata = () => { $(".dur", el).textContent = fmt(audio.duration); };
   let raf = 0;

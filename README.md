@@ -16,6 +16,7 @@
 - [x] 聊天 App（**可以用了**，雙擊 `Freminet Chat.exe`，見[聊天 App](#聊天-app)）
   - 2026-10-08：做成 exe，用自己的視窗打開（860×860 正方形，像電腦版聊天軟件），不開瀏覽器；拿掉 `start_chat.bat`
   - 2026-10-08：背景可以一次上傳多張、可以刪除；上傳只收 JPG / PNG，至少 860×860
+  - 2026-10-08：小菲米尼跟着滑鼠，指着按鈕 / 輸入欄時換圖；語音訊息可以下載
   - 類似 WhatsApp，菲米尼用語音訊息回覆，播放時顯示字幕，頭像用他的照片
   - 他會自己選情緒（9 種），用對應的參考音頻念
   - 聊天記錄會保存；吞字會自動重念
@@ -196,6 +197,8 @@ python scripts/app.py
 | `characters/freminet.jpg` | 頭像，從 `freminet profile/images.jpg` 裁出臉部。官方立繪有版權，不放進 git；沒有這張圖就顯示「菲」字 |
 | `freminet profile/Background/` | 聊天背景圖，放進去的圖都會出現在設定裏。預設用 `background.png`。一樣不放進 git；資料夾沒有圖就用原本的底色 |
 | `characters/freminet-peek.gif` | 從輸入欄後面探頭的菲米尼，從 `freminet profile/interactive asset/freminet-no-bg-sharp-2x.gif` 複製。不放進 git；沒有就不出現 |
+| `characters/freminet-cursor.png` | 跟着滑鼠的小菲米尼，從 `freminet profile/cursor/chibi-character-4x.png` 切掉透明邊、縮成 128px 寬。不放進 git；沒有就不出現 |
+| `characters/freminet-cursor-click.png`、`freminet-cursor-text.png` | 滑鼠指着可以點的東西 / 輸入欄時換成這兩張，從 `freminet profile/cursor/` 的 `hug-character-4x.png`（抱佩伊）和 `book-character-4x.png`（拿書）縮成 128px 寬。不放進 git；沒有就一直用上面那張 |
 | `characters/freminet-heart.png` | 點他飄出來的愛心，從 `freminet profile/interactive asset/Pixel Heart Sprite Sheet 32x32.png` 複製。不放進 git |
 | `config/llm.json` | 用哪個 LLM。改 `active` 就能換：`ollama`（這部的 4b）、`ollama_8b`（這部的 8b）、`server`（另一部電腦的 14b） |
 | `config/tts.json` | GPT-SoVITS 整合包的路徑，每部電腦不同。路徑用 `/` 分隔 |
@@ -212,8 +215,10 @@ python scripts/app.py
   - ⚙ 聊天背景：小窗裏用左右箭頭或滑鼠滾輪切換，外面的背景即時跟着換；可以下載目前這張，或上傳新圖（存進 `freminet profile/Background/`，同名會自動改名）。可以一次選多張上傳，不合要求的會跳過（滑鼠停在失敗訊息上看原因）。上傳只收 JPG / JPEG / PNG，長和寬都至少要和視窗一樣（860×860），鋪滿時才不會拉大變模糊；改了 `WINDOW_SIZE` 的話，`app/index.html` 上傳按鈕的提示也要改。「刪除」會把目前這張從資料夾真的刪掉（要按兩次確認），刪完顯示下一張。選過的那張記在視窗的設定資料夾裏
   - 👁 隱藏聊天記錄：拿掉暗色那層，只看背景圖，再按一次回來
   - 🗑 清除聊天記錄
+- **下載語音**：每則語音訊息的波形右邊有下載按鈕，存成 `菲米尼-<時間>.wav`（檔案本身在 `tts_output/`）
+- **跟着滑鼠的菲米尼**：在滑鼠右下角，慢半拍追上去，不擋點擊；滑鼠離開視窗就淡出。指着按鈕這類可以點的東西時換成抱佩伊，指着輸入欄時換成拿書。大小改 `app/index.html` 裏 `.buddy` 的 `width`
 - **探頭的菲米尼**：每隔 3–9 秒在輸入欄上面隨機位置出現，待 2.5–5 秒縮回去；點他會馬上躲起來並飄出愛心。大小改 `app/index.html` 裏 `.peek` 的 `width`（改大的話 `.hole` 的 `height` 也要加）
-- 角色的圖片設定在 `scripts/app.py` 的 `FRIENDS`：`image` 頭像、`backgrounds` 背景資料夾、`background` 預設背景、`peek` 探頭 gif、`heart` 愛心
+- 角色的圖片設定在 `scripts/app.py` 的 `FRIENDS`：`image` 頭像、`backgrounds` 背景資料夾、`background` 預設背景、`peek` 探頭 gif、`cursor` 跟着滑鼠的圖、`heart` 愛心
 - **本地測試用 `qwen3:4b-instruct`**（Ollama，2.5GB）。不要用 `qwen3:4b`：它會先「思考」，Ollama 的 OpenAI 介面關不掉，回覆會變成空的
 - exe 開 Ollama 時設了 `OLLAMA_KEEP_ALIVE=-1`，LLM 不會閒置 5 分鐘就被卸載（只在 exe 自己開 Ollama 時有效）
 - **記憶**：原文最多傳 `history_turns` 輪（這部 8 輪，server 12 輪）。超過了就把較舊的一半整理成摘要（400 字以內），放在系統提示最後，原文只留最近一半。
