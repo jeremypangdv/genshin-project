@@ -23,8 +23,10 @@ from pathlib import Path
 from PIL import Image, UnidentifiedImageError
 from flask import Flask, abort, jsonify, request, send_from_directory
 
-import llm
-import tts
+# GPT-SoVITS 的 Python（給朋友的版本用它跑）不會自動把 scripts/ 加進搜尋路徑
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import llm  # noqa: E402
+import tts  # noqa: E402
 
 PROJECT = tts.PROJECT
 APP_DIR = PROJECT / "app"

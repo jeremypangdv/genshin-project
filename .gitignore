@@ -13,3 +13,6 @@ freminet profile/
 build/
 Freminet Chat.exe
 app.log
+
+# scripts/make_bundle.py 做出來的（給朋友的資料夾）
+dist/

@@ -34,6 +34,9 @@
   - GPT-SoVITS 的路徑寫在 `config/tts.json`
   - `active` 是 `server` 時，`Freminet Chat.exe` 不會開本地 Ollama，那部電腦不用裝
   - 沒有 NVIDIA 顯卡就自動改用 CPU（能用但每句要 30 秒以上）
+- [x] 打包給朋友（2026-10-09）：先 `build_exe.bat`，再 `python scripts/make_bundle.py`，做出 `dist/Freminet Chat/`（約 21.5GB），朋友雙擊 exe 就能用，不用裝任何東西
+  - 裏面有 GPT-SoVITS（拿掉訓練用的東西，它的 Python 也用來跑聊天程式）、Ollama + `qwen3:8b`（用 11435 埠，不和朋友自己的 Ollama 撞）
+  - 不包括這部電腦的聊天記錄；最好有 NVIDIA 顯卡
 - [x] 長期記憶：舊對話整理成摘要（見[聊天 App](#聊天-app)）
 
 ## 資料

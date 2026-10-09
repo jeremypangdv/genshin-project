@@ -27,7 +27,8 @@ PROJECT = Path(__file__).resolve().parent.parent
 MODEL_DIR = PROJECT / "Models" / "Freminet"
 OUTPUT_DIR = PROJECT / "tts_output"
 # GPT-SoVITS 整合包放在哪裏，每部電腦不同，寫在 config/tts.json
-GSV = Path(json.loads((PROJECT / "config" / "tts.json").read_text(encoding="utf-8"))["gpt_sovits"])
+# 可以是相對路徑（相對專案資料夾），打包給朋友的版本用 "GPT-SoVITS"
+GSV = PROJECT / json.loads((PROJECT / "config" / "tts.json").read_text(encoding="utf-8"))["gpt_sovits"]
 PYTHON = GSV / "runtime" / "python.exe"
 API = "http://127.0.0.1:9880"
 EXP_NAME = "Freminet"
