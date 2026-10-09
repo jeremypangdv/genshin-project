@@ -126,7 +126,11 @@ def system_prompt(friend, summary=""):
 - 不要提到自己是 AI 或語言模型。""" + (f"""
 
 ## 你們之前聊過的事（摘要）
-{summary}""" if summary else "")
+{summary}""" if summary else "") + f"""
+
+## 記憶（很重要）
+{"上面摘要寫的事，你都記得很清楚，被問到就肯定地回答，不用說「好像」。" + chr(10) if summary else ""}{"摘要和這次對話" if summary else "這次對話"}裏都沒有的事，就是你忘了：用自己的話老實說記不清楚，請對方再告訴你，不要猜一個答案出來。"""
+# 放在最後，小模型比較聽；寫了固定例句的話他會每次照抄，所以只說要怎樣
 
 
 def vary_opening(reply, messages):
