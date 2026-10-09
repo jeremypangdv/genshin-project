@@ -24,13 +24,11 @@
   - 聊天記錄會保存；吞字會自動重念
   - 2026-10-08：聊天畫面鋪滿整個視窗，不顯示好友列表；聊天背景可以在設定裏切換、下載、上傳（圖放在 `freminet profile/Background/`）；右上角可以隱藏聊天記錄，只看背景圖；菲米尼會像地鼠一樣從輸入欄後面探頭，點他會飄出愛心
   - 目前用這部電腦的 `qwen3:8b` 測試（`active` 是 `ollama_8b`），之前是 `qwen3:4b-instruct`
-- [ ] 在另一部電腦（RTX 5060 8GB）跑 `qwen3:14b`，這部透過 Tailscale 連過去（**下一步**，見 [LLM](#llm)）
+- [x] ~~在另一部電腦跑 `qwen3:14b`~~：2026-10-10 決定不用了，就用這部的 `qwen3:8b`（`ollama_8b`）。`server/` 的 notebook 和 `server` 設定先留着
   - [x] 寫好 `server/install_server.ipynb` 和 `server/start_server.ipynb`（2026-10-07 從 bat 檔改成 notebook）
   - [x] 這部電腦裝好 Tailscale（2026-10-07，這部的 IP 是 `100.90.10.112`）
   - [x] 那部電腦裝好 Tailscale（同一個帳號，IP 是 `100.107.228.94`），已填進 `config/llm.json` 的 `server`
-  - [ ] 那部跑兩個 notebook，`active` 改成 `server`，測試連線（2026-10-07 試的時候那部是 offline）
-  - [ ] 比較 14b 和 8b 的速度和角色效果，再決定語音要不要也搬去伺服器
-- [ ] 決定用本地模型還是 API：比較簡報 https://claude.ai/artifact/C4JQrqPKo8T9QSAaTbEwWc （8b / 14b / DeepSeek / Qwen / GPT Luna 的價格和好壞，2026-10-07）
+- [x] 決定用本地模型還是 API（2026-10-10：用本地 `qwen3:8b`）：比較簡報 https://claude.ai/artifact/C4JQrqPKo8T9QSAaTbEwWc （8b / 14b / DeepSeek / Qwen / GPT Luna 的價格和好壞，2026-10-07）
 - [x] 給別的電腦用的準備（2026-10-07）
   - GPT-SoVITS 的路徑寫在 `config/tts.json`
   - `active` 是 `server` 時，`Freminet Chat.exe` 不會開本地 Ollama，那部電腦不用裝
@@ -42,6 +40,7 @@
   - 2026-10-10：關掉聊天視窗會一起關掉自帶的 Ollama（不然模型一直佔着顯卡），測試過約 2 分鐘後全部關掉
   - 壓縮前先刪掉自己測試留下的 `app.log` 和 `tts_output/` 裏的 wav；`chats/` 要是空的
 - [x] 長期記憶：舊對話整理成摘要（見[聊天 App](#聊天-app)）
+- [x] 2026-10-10 改成剛認識：對方不是旅行者，菲米尼不認識你，從拘謹慢慢變熟（`characters/freminet.md` 的「和對方的關係」）
 
 ## 資料
 
@@ -208,7 +207,7 @@ python scripts/app.py
 | `characters/freminet-cursor.png` | 跟着滑鼠的小菲米尼，從 `freminet profile/cursor/chibi-character-4x.png` 切掉透明邊、縮成 128px 寬。不放進 git；沒有就不出現 |
 | `characters/freminet-cursor-click.png`、`freminet-cursor-text.png` | 滑鼠指着可以點的東西 / 輸入欄時換成這兩張，從 `freminet profile/cursor/` 的 `hug-character-4x.png`（抱佩伊）和 `book-character-4x.png`（拿書）縮成 128px 寬。不放進 git；沒有就一直用上面那張 |
 | `characters/freminet-heart.png` | 點他飄出來的愛心，從 `freminet profile/interactive asset/Pixel Heart Sprite Sheet 32x32.png` 複製。不放進 git |
-| `config/llm.json` | 用哪個 LLM。改 `active` 就能換：`ollama`（這部的 4b）、`ollama_8b`（這部的 8b）、`server`（另一部電腦的 14b） |
+| `config/llm.json` | 用哪個 LLM。現在用 `ollama_8b`（這部的 8b）；`ollama`（4b）、`server`（另一部電腦的 14b，不用了）也還在 |
 | `config/tts.json` | GPT-SoVITS 整合包的路徑，每部電腦不同。路徑用 `/` 分隔 |
 | `characters/freminet.md` | 角色資料，每則訊息都會整份放進系統提示。改完不用重開 app，下一則訊息就會用新的 |
 | `scripts/llm.py` | 呼叫 LLM，用 Ollama 的 OpenAI 格式介面 |
@@ -218,7 +217,7 @@ python scripts/app.py
 | `app/loading.html` | exe 打開時，模型還在載入的畫面 |
 | `scripts/launcher.py` | `Freminet Chat.exe` 的程式：用本地模型時先開 Ollama，再在背景跑 `app.py --window`；給朋友的版本關視窗時會關掉自己開的 Ollama |
 | `chats/` | 聊天記錄（不放進 git）；介面右上角垃圾桶可以清除，連摘要和語音檔一起清 |
-| `chats/<角色>.memory.json` | 舊對話的摘要，和 `upto`（摘要包括到第幾則訊息） |
+| `chats/<角色>.memory.json` | 舊對話的記憶：`facts` 對方的資料、`summary` 聊過的話題，和 `upto`（記憶包括到第幾則訊息） |
 
 - **介面右上角**（由左到右）：
   - ⚙ 聊天背景：小窗裏用左右箭頭或滑鼠滾輪切換，外面的背景即時跟着換；可以下載目前這張，或上傳新圖（存進 `freminet profile/Background/`，同名會自動改名）。可以一次選多張上傳，不合要求的會跳過（滑鼠停在失敗訊息上看原因）。上傳只收 JPG / JPEG / PNG，長和寬都至少要和視窗一樣（860×860），鋪滿時才不會拉大變模糊；改了 `WINDOW_SIZE` 的話，`app/index.html` 上傳按鈕的提示也要改。「刪除」會把目前這張從資料夾真的刪掉（要按兩次確認），刪完顯示下一張。選過的那張記在視窗的設定資料夾裏
@@ -232,11 +231,14 @@ python scripts/app.py
 - 角色的圖片設定在 `scripts/app.py` 的 `FRIENDS`：`image` 頭像、`backgrounds` 背景資料夾、`background` 預設背景、`peek` 探頭 gif、`cursor` 跟着滑鼠的圖、`heart` 愛心
 - **本地測試用 `qwen3:4b-instruct`**（Ollama，2.5GB）。不要用 `qwen3:4b`：它會先「思考」，Ollama 的 OpenAI 介面關不掉，回覆會變成空的
 - exe 開 Ollama 時設了 `OLLAMA_KEEP_ALIVE=-1`，LLM 不會閒置 5 分鐘就被卸載（只在 exe 自己開 Ollama 時有效）
-- **記憶**：原文最多傳 `history_turns` 輪（這部 8 輪，server 12 輪）。超過了就把較舊的一半整理成摘要（400 字以內），放在系統提示最後，原文只留最近一半。
+- **記憶**：原文最多傳 `history_turns` 輪（這部 8 輪，server 12 輪）。超過了就把較舊的一半整理進記憶，放在系統提示最後，原文只留最近一半。記憶分兩份：
   - 一次砍一半，不是每則訊息去掉一輪，這樣傳給 LLM 的內容幾則訊息內都不變，Ollama 的快取能命中
   - 摘要在回覆送出後於背景整理；聊天記錄本身不會刪，介面還是看得到全部
-  - 摘要只有 400 字，聊得越久，舊的小細節越容易被擠掉，只留重點
-  - 系統提示最後有「記憶」一段：摘要裏有的事要肯定回答，摘要和這次對話都沒有的就用自己的話說記不清楚，不要猜。不寫固定例句，不然他每次照抄。2026-10-10 用 8b 測：記得的 6/6 答對，沒聊過的 4/6 老實說忘了、2/6 還是會猜
+  - **對方的資料**（`facts`）：名字、寵物、生日、工作、喜好這類，只從對方傳的訊息裏找，只加不刪（重複的由程式用 `similar` 跳過），超過 `MAX_FACTS`（400 字）才請 LLM 合併。以前和話題混在一份摘要裏，聊 48 輪後名字、貓、生日全被當成舊的刪掉
+  - **摘要**（`summary`）：聊過的話題、約定、心情，300 字以內，舊的會慢慢擠掉。不准寫個人資料、不准推測（試過它自己編了一個生日）
+  - 系統提示最後有「記憶」一段：資料和摘要裏有的要肯定回答；都沒有的就是「聽過但忘了」，用自己的話承認、請對方再說，不要猜。每則訊息隨機給一個合角色的說法方向（`FORGET_STYLES`），不寫固定例句，連他自己說過的句子也不能放進提示，不然照抄
+  - 2026-10-10 用模擬長聊天測（說 8 個細節、閒聊 40 輪、再問 8 個說過的和 8 個沒說過的）：說過的 5–8/8 答對（之前 0/8），沒說過的不會編答案；但 8b 說「忘了」時幾乎每次都套同一個句型，試過叫它避開、重寫最多 3 次都沒用，所以沒留重寫
+  - 結巴（「我…我」）：最近兩則用過就自動拿掉（`calm`），角色設定說只在真的緊張時用
   - Ollama 的上下文只有 4096 token：角色資料 + 摘要 + 4 輪約 3100，最多 8 輪時大約接近上限；角色資料再加長的話要調低 `history_turns`
 - 和 GPT-SoVITS 一起用大約佔 5.5GB 顯存
 - 速度：啟動（載入 + 預熱）約 1–2 分鐘；打開後短回覆約 5 秒，5 句左右的長回覆約 13 秒（逐句合成，吞字還要重念）

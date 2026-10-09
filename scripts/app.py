@@ -12,6 +12,7 @@ import atexit
 import json
 import logging
 import os
+import random
 import re
 import subprocess
 import sys
@@ -32,6 +33,7 @@ PROJECT = tts.PROJECT
 APP_DIR = PROJECT / "app"
 CHAT_DIR = PROJECT / "chats"
 CHARACTER_DIR = PROJECT / "characters"
+MAX_FACTS = 400  # 對方的資料超過這麼多字，才請 LLM 合併重複的
 KEEP_VOICES = 50  # 每個角色只留最近 50 則語音（約 25MB），更早的刪掉 wav，只剩文字
 # avatar 是沒有頭像圖片時顯示的字；image 放在 characters/ 裏
 # backgrounds 是聊天背景圖的資料夾，background 是還沒選過時預設用的那張
@@ -51,10 +53,24 @@ ACTION = re.compile(r"（[^）]*）|\([^)]*\)|\*[^*]*\*")
 # 小模型偶爾在中文裏夾英文（「maybe」「usually」），寫在提示裏也禁不掉，有的話就重新生成
 ENGLISH = re.compile(r"[A-Za-z]{2,}")
 # 對方說要英文，或整則訊息都是英文時，才不擋英文；中文裏夾個「LOL」這種不算
+# 要說忘了時，每次隨機給一個方向（不是句子），不然他每次都套同一個句型
+FORGET_STYLES = [
+    # 都要合角色：內向、沒自信、會道歉，不開玩笑（見 characters/freminet.md 的個性和說話方式）
+    "小聲道歉，怪自己記性不好",
+    "說只記得有聊過，但細節想不起來了",
+    "先努力回想一下，最後承認想不起來",
+    "老實地道歉，說這次會好好記住",
+    "有點慌張，怕對方覺得他不在乎",
+    "很簡短地說忘了，直接問對方",
+    "說最近一直在想發條玩具的事，一時想不起來，覺得很抱歉",
+    "平靜地說想不起來，問對方願不願意再說一次",
+]
 ASK_ENGLISH = re.compile(r"英文|英語|English", re.I)
 CHINESE = re.compile(r"[一-鿿]")
 # 開頭的語氣詞。小模型一害羞就每句都用「那個…」開頭，提示裏禁也禁不掉，所以最多每三句用一次
 FILLER = re.compile(r"^(?:(?:那個|嗯|唔|呃|啊|欸)[…，,.。？！?!\s]+)+")
+# 結巴（「我…我」「能…能」）：角色設定說只在真的緊張時用，最近用過就拿掉
+STUTTER = re.compile(r"([一-鿿])…\1")
 # 語音訊息要短，提示裏叫模型一兩句它還是常常寫到七八十字，超過就在句子結尾切掉
 SENTENCE = re.compile(r"[^。！？!?.]+[。！？!?….]*|[。！？!?.]+")
 MAX_CHARS = 45
@@ -112,9 +128,12 @@ def stop_voice():
         voice["proc"].terminate()
 
 
-def system_prompt(friend, summary=""):
+def system_prompt(friend, memory=None, style=None):
     persona = (CHARACTER_DIR / f"{friend}.md").read_text(encoding="utf-8")
     emotions = "、".join(f"[{e}]（{NAMES.get(e, e)}）" for e in info["refs"])
+    facts, summary = (memory or {}).get("facts", ""), (memory or {}).get("summary", "")
+    known = "、".join(k for k, v in (("「對方的資料」", facts), ("摘要", summary)) if v)
+    style = style or random.choice(FORGET_STYLES)
     return f"""{persona}
 
 ## 回覆格式（一定要遵守）
@@ -125,12 +144,15 @@ def system_prompt(friend, summary=""):
 - 不用每次都補充自己的事，也不用每次都反問對方，大部分回覆說完就停。
 - 不要提到自己是 AI 或語言模型。""" + (f"""
 
-## 你們之前聊過的事（摘要）
+## 對方的資料（對方以前親口告訴你的）
+{facts}""" if facts else "") + (f"""
+
+## 最近聊過的事（摘要）
 {summary}""" if summary else "") + f"""
 
 ## 記憶（很重要）
-{"上面摘要寫的事，你都記得很清楚，被問到就肯定地回答，不用說「好像」。" + chr(10) if summary else ""}{"摘要和這次對話" if summary else "這次對話"}裏都沒有的事，就是你忘了：用自己的話老實說記不清楚，請對方再告訴你，不要猜一個答案出來。"""
-# 放在最後，小模型比較聽；寫了固定例句的話他會每次照抄，所以只說要怎樣
+{f"上面{known}寫的事，你都記得很清楚，被問到就肯定地回答，不用說「好像」。" + chr(10) if known else ""}對方說以前跟你講過、但{known + "和" if known else ""}這次對話裏都找不到的事，就是你聽過但忘了（不是不知道）：像人一樣自然地承認忘了，再請對方說一次，不要猜答案。這次要說忘了的話，方式是：{style}。"""
+# 放在最後，小模型比較聽；寫了固定例句（連他自己說過的句子也是）的話他會照抄，所以只說要怎樣
 
 
 def vary_opening(reply, messages):
@@ -139,6 +161,14 @@ def vary_opening(reply, messages):
     rest = FILLER.sub("", reply, count=1)
     if any(FILLER.match(t) for t in recent) and rest and rest != reply:
         return rest
+    return reply
+
+
+def calm(reply, messages):
+    """Drop stutters if either of the last two replies already had one."""
+    recent = [m["text"] for m in messages if m["role"] == "assistant"][-2:]
+    if any(STUTTER.search(t) for t in recent):
+        return STUTTER.sub(r"\1", reply)
     return reply
 
 
@@ -175,14 +205,15 @@ def save_chat(friend, messages):
     chat_path(friend).write_text(json.dumps(messages, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
-# 舊對話的摘要：summary 概括了聊天記錄裏 upto 之前的訊息，之後的才原文傳給 LLM
+# 舊對話的記憶：facts 是對方說過自己的事（名字、寵物、生日…），只加不刪；
+# summary 概括了聊天記錄裏 upto 之前聊過的話題，舊的會慢慢被擠掉；upto 之後的才原文傳給 LLM
 def memory_path(friend):
     return CHAT_DIR / f"{friend}.memory.json"
 
 
 def load_memory(friend):
     path = memory_path(friend)
-    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"summary": "", "upto": 0}
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"facts": "", "summary": "", "upto": 0}
 
 
 def history_turns():
@@ -199,37 +230,89 @@ def next_user(messages, i):
 
 
 def summarize(friend):
-    """Fold old messages into the summary once there are more than history_turns of them.
+    """Fold old messages into the memory once there are more than history_turns of them.
 
     It cuts back to half in one go instead of dropping one turn per message, so
     the history sent stays the same for several messages and the API cache hits.
+    Facts about the other person are kept apart from the summary, because when
+    they were mixed in, the model dropped them as "old" after a few rounds.
     """
     turns = history_turns()
     messages = load_chat(friend)
-    memory = load_memory(friend)
+    memory = {"facts": "", **load_memory(friend)}
     if len(messages) - memory["upto"] <= turns * 2:
         return
     cut = next_user(messages, len(messages) - turns // 2 * 2)
     lines = "\n".join(
         f"{'對方' if m['role'] == 'user' else '菲米尼'}：{m['text']}" for m in messages[memory["upto"]:cut])
-    prompt = f"""把菲米尼和對方（旅行者）的聊天整理成摘要，給菲米尼以後記得聊過什麼。
-- 寫重要的：對方說過自己的事（喜好、經歷、心情）、約定、聊過的話題、兩人關係的變化
-- 和舊摘要合併成一份，舊的不重要的可以刪；用第三人稱，條列，總共不超過 400 字
+    try:
+        facts = merge_facts(memory["facts"], "\n".join(
+            m["text"] for m in messages[memory["upto"]:cut] if m["role"] == "user"))
+        summary = llm.chat([{"role": "user", "content": f"""把菲米尼和對方最近聊的話題整理成摘要，給菲米尼以後記得聊過什麼。
+- 寫聊過的話題、約定、對方的心情、兩人關係的變化；對方的個人資料（名字、家人、寵物、生日、喜好…）另外記，這裏一律不寫
+- 只寫聊天裏真的出現過的，不要推測或補充
+- 和舊摘要合併成一份，舊的不重要的可以刪；用第三人稱，條列，總共不超過 300 字
 - 只輸出摘要，不要其他文字
 
 舊摘要：
 {memory["summary"] or "（沒有）"}
 
 新的聊天：
-{lines}"""
-    try:
-        summary = llm.chat([{"role": "user", "content": prompt}]).strip()
+{lines}"""}]).strip()
     except RuntimeError as e:
         print(f"整理摘要失敗：{e}")
         return
-    if summary:
-        memory_path(friend).write_text(json.dumps({"summary": summary, "upto": cut}, ensure_ascii=False, indent=1),
-                                       encoding="utf-8")
+    memory_path(friend).write_text(json.dumps({"facts": facts, "summary": summary or memory["summary"], "upto": cut},
+                                              ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def merge_facts(facts, said):
+    """Add what the other person said about themself; old facts are only shortened, never dropped.
+
+    said is only their own messages, so Freminet's own likes don't end up in it,
+    and repeats are skipped here because the model writes known facts again anyway.
+    """
+    new = llm.chat([{"role": "user", "content": f"""下面是對方傳的訊息。找出對方說的關於自己的事實：名字、家人、寵物、工作、學校、生日、喜歡和討厭的東西、害怕的東西、計劃。
+- 每行一條，用「- 」開頭，用繁體中文，寫具體的名字和數字（例如「- 養了一隻黑貓，叫芝麻」）
+- 只寫對方明確說了的，問句和閒聊不算；沒有就只輸出「沒有」
+
+{said}"""}]).strip()
+    lines = facts.splitlines()
+    for line in new.splitlines():
+        line = line.strip()
+        if line.startswith("-") and line.strip(" -。") not in ("沒有", "没有", "無", "无") \
+                and not any(similar(line.lstrip("- "), old.lstrip("- ")) for old in lines):
+            lines.append(line)
+    if len("\n".join(lines)) > MAX_FACTS:
+        # 太長才請它合併重複的、刪掉被新資料取代的，但不能少了任何一件事
+        short = [l.strip() for l in llm.chat([{"role": "user", "content": f"""把這份關於對方的資料整理得更短：合併重複的，同一件事前後不同的只留後面（較新）的。
+其他每一件事都要留着，不能刪；用繁體中文，每行一條，用「- 」開頭，只輸出資料。
+
+{chr(10).join(lines)}"""}]).splitlines() if l.strip().startswith("-")]
+        if len(short) >= len(lines) // 2:  # 刪太多的話就不用它的版本
+            lines = short
+    return "\n".join(lines)
+
+
+def similar(a, b):
+    """True when two lines share most of their two-character pieces."""
+    pa, pb = ({t[i:i + 2] for i in range(len(t) - 1)} for t in (a, b))
+    return bool(pa and pb) and len(pa & pb) / min(len(pa), len(pb)) > 0.5
+
+
+def reply_to(friend, messages, text):
+    """(raw, emotion, reply) for the last message; retried up to 3 times when it slips into English.
+
+    Retrying replies that repeat an earlier one was tried too (2026-10-10): 8b
+    wrote the same sentence pattern again every time, so it only made replies slower.
+    """
+    history = llm_messages(friend, messages)
+    for _ in range(3):
+        raw = llm.chat(history)
+        emotion, reply = parse_reply(raw)
+        if not ENGLISH.search(reply) or wants_english(text):
+            break
+    return raw, emotion, reply
 
 
 def parse_reply(raw):
@@ -246,11 +329,11 @@ def parse_reply(raw):
     return emotion, text
 
 
-def llm_messages(friend, messages):
+def llm_messages(friend, messages, style=None):
     memory = load_memory(friend)
     # 摘要失敗的話也不要傳太多，最多兩倍 history_turns
     start = next_user(messages, max(memory["upto"], len(messages) - history_turns() * 4))
-    out = [{"role": "system", "content": system_prompt(friend, memory["summary"])}]
+    out = [{"role": "system", "content": system_prompt(friend, memory, style)}]
     for m in messages[start:]:
         if m["role"] == "user":
             out.append({"role": "user", "content": m["text"]})
@@ -318,16 +401,12 @@ def send(friend):
         messages.append({"role": "user", "text": text, "time": time.time()})
         save_chat(friend, messages)
         try:
-            for _ in range(3):
-                raw = llm.chat(llm_messages(friend, messages))
-                emotion, reply = parse_reply(raw)
-                if not ENGLISH.search(reply) or wants_english(text):
-                    break
+            raw, emotion, reply = reply_to(friend, messages, text)
         except RuntimeError as e:
             return jsonify(error=str(e)), 502
         if not reply:
             return jsonify(error=f"模型沒有回覆內容：{raw!r}"), 502
-        reply = shorten(vary_opening(reply, messages))
+        reply = shorten(calm(vary_opening(reply, messages), messages))
 
         msg = {"role": "assistant", "text": reply, "emotion": emotion, "time": time.time()}
         if voice["state"] == "ready":
