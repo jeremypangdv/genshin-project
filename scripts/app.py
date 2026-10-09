@@ -32,6 +32,7 @@ PROJECT = tts.PROJECT
 APP_DIR = PROJECT / "app"
 CHAT_DIR = PROJECT / "chats"
 CHARACTER_DIR = PROJECT / "characters"
+KEEP_VOICES = 50  # 每個角色只留最近 50 則語音（約 25MB），更早的刪掉 wav，只剩文字
 # avatar 是沒有頭像圖片時顯示的字；image 放在 characters/ 裏
 # backgrounds 是聊天背景圖的資料夾，background 是還沒選過時預設用的那張
 # cursor 是跟着滑鼠的小圖；指着可以點的東西時換 cursor_click，指着輸入欄時換 cursor_text
@@ -292,6 +293,10 @@ def clear_chat(friend):
     if friend not in FRIENDS:
         abort(404)
     with lock:
+        # 語音檔也一起刪，清空後畫面上已經找不到它們
+        for msg in load_chat(friend):
+            if msg.get("audio"):
+                (tts.OUTPUT_DIR / Path(msg["audio"]).name).unlink(missing_ok=True)
         chat_path(friend).unlink(missing_ok=True)
         memory_path(friend).unlink(missing_ok=True)
     return jsonify(ok=True)
@@ -329,10 +334,18 @@ def send(friend):
         else:
             msg["voice_error"] = "語音模型還沒載入" if voice["state"] == "loading" else "語音模型載入失敗"
         messages.append(msg)
+        drop_old_voices(messages)
         save_chat(friend, messages)
     # 回覆先送出去，摘要在背景整理；下一則訊息會等它完成（lock）
     threading.Thread(target=locked_summarize, args=(friend,), daemon=True).start()
     return jsonify(msg)
+
+
+def drop_old_voices(messages):
+    """Keep only the last KEEP_VOICES voice messages; older ones lose their wav and show as text."""
+    voiced = [m for m in messages if m.get("audio")]
+    for m in voiced[:-KEEP_VOICES]:
+        (tts.OUTPUT_DIR / Path(m.pop("audio")).name).unlink(missing_ok=True)
 
 
 def locked_summarize(friend):

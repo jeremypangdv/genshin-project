@@ -7,6 +7,7 @@ Everything app.py prints goes to app.log.
 In the folder made for friends (scripts/make_bundle.py) Python and Ollama come
 along: GPT-SoVITS's own runtime runs app.py, and ollama/ runs on port 11435 with
 its models in ollama/models, so it never touches an Ollama the friend already has.
+That Ollama is stopped when the chat closes, so the model doesn't stay in memory.
 """
 
 import ctypes
@@ -56,16 +57,23 @@ def main():
         error("找不到 Python，請先安裝，並加進 PATH")
         return
     # 用這部電腦的模型時，Ollama 沒開的話在背景開起來；用另一部電腦（server）就不用
+    started = None
     if local and not up(ollama_url):
         try:
-            subprocess.Popen([ollama, "serve"], env=env, creationflags=HIDDEN)
+            started = subprocess.Popen([ollama, "serve"], env=env, creationflags=HIDDEN)
         except FileNotFoundError:
             error("找不到 Ollama，請先安裝")
             return
     log_path = PROJECT / "app.log"
-    with open(log_path, "w", encoding="utf-8") as log:
-        code = subprocess.run([PYTHON, "scripts/app.py", "--window"], cwd=PROJECT, env=env,
-                              stdout=log, stderr=subprocess.STDOUT, creationflags=HIDDEN).returncode
+    try:
+        with open(log_path, "w", encoding="utf-8") as log:
+            code = subprocess.run([PYTHON, "scripts/app.py", "--window"], cwd=PROJECT, env=env,
+                                  stdout=log, stderr=subprocess.STDOUT, creationflags=HIDDEN).returncode
+    finally:
+        # 給朋友的版本：關掉聊天就關掉自己開的 Ollama（連同載入模型的子程序），不然模型一直佔着顯卡
+        if started and BUNDLED_OLLAMA.is_file():
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(started.pid)],
+                           capture_output=True, creationflags=HIDDEN)
     if code:
         error(f"聊天程式出錯了，記錄在：\n{log_path}")
 

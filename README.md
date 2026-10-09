@@ -39,6 +39,8 @@
   - 裏面有 GPT-SoVITS（拿掉訓練用的東西，它的 Python 也用來跑聊天程式）、Ollama + `qwen3:8b`（用 11435 埠，不和朋友自己的 Ollama 撞）
   - 不包括這部電腦的聊天記錄；最好有 NVIDIA 顯卡
   - 2026-10-09 測試過：打包版能開、語音和回覆正常。給朋友時把 `dist/Freminet Chat/` 整個資料夾給他們
+  - 2026-10-10：關掉聊天視窗會一起關掉自帶的 Ollama（不然模型一直佔着顯卡），測試過約 2 分鐘後全部關掉
+  - 壓縮前先刪掉自己測試留下的 `app.log` 和 `tts_output/` 裏的 wav；`chats/` 要是空的
 - [x] 長期記憶：舊對話整理成摘要（見[聊天 App](#聊天-app)）
 
 ## 資料
@@ -191,7 +193,7 @@ python scripts/app.py
 
 打開 http://127.0.0.1:5000 。
 
-**平時用：雙擊 `Freminet Chat.exe`**。會順便開 Ollama（用本地模型時），沒有黑色視窗，直接開一個聊天大小的視窗（Edge 的 app 模式，沒有分頁和網址列，可以自己拉大小），模型載入時先顯示「菲米尼正在準備…」，好了自動換成聊天畫面；關掉視窗就會關掉伺服器和語音模型（聊天畫面每 20 秒告訴伺服器視窗還開着，不看 Edge 程序，因為 Edge 關了視窗可能還留在背景）。已經開着時再雙擊 exe，會多開一個視窗。
+**平時用：雙擊 `Freminet Chat.exe`**。會順便開 Ollama（用本地模型時），沒有黑色視窗，直接開一個聊天大小的視窗（Edge 的 app 模式，沒有分頁和網址列，可以自己拉大小），模型載入時先顯示「菲米尼正在準備…」，好了自動換成聊天畫面；關掉視窗就會關掉伺服器和語音模型，給朋友的版本連自帶的 Ollama 也一起關（聊天畫面每 20 秒告訴伺服器視窗還開着，不看 Edge 程序，因為 Edge 關了視窗可能還留在背景）。已經開着時再雙擊 exe，會多開一個視窗。
 - exe 不放進 git，用 `build_exe.bat` 做（會裝 PyInstaller，圖示用 `characters/freminet.jpg`）。exe 要放在專案資料夾裏，電腦要有 Python（在 PATH 裏）
 - 程式輸出記在 `app.log`；出錯會跳出提示
 - 視窗大小改 `scripts/app.py` 的 `WINDOW_SIZE`；選過的背景記在 `%LOCALAPPDATA%\FreminetChat\edge`
@@ -214,8 +216,8 @@ python scripts/app.py
 | `app/index.html` | 聊天介面 |
 | `app/cursors/` | 自己畫的鼠標（SVG，32×32）：`normal` 冰藍箭頭、`click` 金色箭頭加齒輪、`text` 深藍 I 字。在 `app/index.html` 開頭的 `--cur-*` 設定，後面的數字是點擊位置 |
 | `app/loading.html` | exe 打開時，模型還在載入的畫面 |
-| `scripts/launcher.py` | `Freminet Chat.exe` 的程式：用本地模型時先開 Ollama，再在背景跑 `app.py --window` |
-| `chats/` | 聊天記錄（不放進 git）；介面右上角垃圾桶可以清除，連摘要一起清 |
+| `scripts/launcher.py` | `Freminet Chat.exe` 的程式：用本地模型時先開 Ollama，再在背景跑 `app.py --window`；給朋友的版本關視窗時會關掉自己開的 Ollama |
+| `chats/` | 聊天記錄（不放進 git）；介面右上角垃圾桶可以清除，連摘要和語音檔一起清 |
 | `chats/<角色>.memory.json` | 舊對話的摘要，和 `upto`（摘要包括到第幾則訊息） |
 
 - **介面右上角**（由左到右）：
@@ -223,6 +225,7 @@ python scripts/app.py
   - 👁 隱藏聊天記錄：拿掉暗色那層，只看背景圖，再按一次回來
   - 🗑 清除聊天記錄
 - **下載語音**：每則語音訊息的波形右邊有下載按鈕，存成 `菲米尼-<時間>.wav`（檔案本身在 `tts_output/`）
+- **語音只留最近 50 則**（`scripts/app.py` 的 `KEEP_VOICES`，約 25MB）：每多一則就刪掉最舊那則的 wav，那則只剩文字、播放鍵變灰。視窗沒重開的話，剛被刪的那則看起來還能播，但按了沒聲音
 - **鼠標**：聊天視窗裏換成 `app/cursors/` 的三個鼠標（一般 / 可以點 / 打字），離開視窗就是系統原本的
 - **跟着滑鼠的菲米尼**：在滑鼠右下角，慢半拍追上去，不擋點擊；滑鼠離開視窗就淡出。指着按鈕這類可以點的東西時換成抱佩伊，指着輸入欄時換成拿書，並移到滑鼠右上角，不擋住打的字。大小改 `app/index.html` 裏 `.buddy` 的 `width`
 - **探頭的菲米尼**：每隔 3–9 秒在輸入欄上面隨機位置出現，待 2.5–5 秒縮回去；點他會馬上躲起來並飄出愛心。大小改 `app/index.html` 裏 `.peek` 的 `width`（改大的話 `.hole` 的 `height` 也要加）
