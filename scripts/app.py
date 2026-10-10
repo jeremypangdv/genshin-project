@@ -65,6 +65,9 @@ FORGET_STYLES = [
     "說最近一直在想發條玩具的事，一時想不起來，覺得很抱歉",
     "平靜地說想不起來，問對方願不願意再說一次",
 ]
+# 對方在問「你記不記得我的…」：有這些字、是問句、還提到「我」，就先查資料（look_up）
+RECALL = re.compile(r"記得|记得|記不|忘了|忘記|還知道|我叫什麼|我的名字|說過|講過|告訴過|提過")
+QUESTION = re.compile(r"[？?]|嗎|什麼|哪|幾|誰|來着|是不是")
 ASK_ENGLISH = re.compile(r"英文|英語|English", re.I)
 CHINESE = re.compile(r"[一-鿿]")
 # 開頭的語氣詞。小模型一害羞就每句都用「那個…」開頭，提示裏禁也禁不掉，所以最多每三句用一次
@@ -128,7 +131,8 @@ def stop_voice():
         voice["proc"].terminate()
 
 
-def system_prompt(friend, memory=None, style=None):
+def system_prompt(friend, memory=None, style=None, recall=None):
+    """recall is what look_up() found when the message asks whether he remembers something."""
     persona = (CHARACTER_DIR / f"{friend}.md").read_text(encoding="utf-8")
     emotions = "、".join(f"[{e}]（{NAMES.get(e, e)}）" for e in info["refs"])
     facts, summary = (memory or {}).get("facts", ""), (memory or {}).get("summary", "")
@@ -151,8 +155,40 @@ def system_prompt(friend, memory=None, style=None):
 {summary}""" if summary else "") + f"""
 
 ## 記憶（很重要）
-{f"上面{known}寫的事，你都記得很清楚，被問到就肯定地回答，不用說「好像」。" + chr(10) if known else ""}對方說以前跟你講過、但{known + "和" if known else ""}這次對話裏都找不到的事，就是你聽過但忘了（不是不知道）：像人一樣自然地承認忘了，再請對方說一次，不要猜答案。這次要說忘了的話，方式是：{style}。"""
+""" + (f"對方問的事你記得，對方說過：「{recall}」（這裏的「我」是對方）。直接肯定地回答，不要說忘了，也不用說「好像」。" if recall else
+       f"對方問的事你聽過但忘了（不是不知道），不要猜答案，也不要拿別的事來湊。像人一樣自然地承認忘了，再請對方說一次。方式：{style}。"
+       if recall == "" else
+       f"""{f"上面{known}寫的事，你都記得很清楚，被問到就肯定地回答，不用說「好像」。" + chr(10) if known else ""}對方說以前跟你講過、但{known + "和" if known else ""}這次對話裏都找不到的事，就是你聽過但忘了（不是不知道）：像人一樣自然地承認忘了，再請對方說一次，不要猜答案。這次要說忘了的話，方式是：{style}。""")
 # 放在最後，小模型比較聽；寫了固定例句（連他自己說過的句子也是）的話他會照抄，所以只說要怎樣
+
+
+def look_up(text, memory, said):
+    """When the message asks whether he remembers something, look it up first, without the persona.
+
+    Returns the line that answers it, "" when it isn't there, or None when the message isn't asking.
+    With only the memory section saying "admit you forgot", 8b said it forgot about half of
+    the facts it had; looking up first fixed most of that and still didn't guess things never
+    said (2000-message test, 2026-10-10). A separate 4b checker was too slow on a 6GB card.
+    """
+    if not (RECALL.search(text) and QUESTION.search(text) and "我" in text):
+        return None
+    # 試過的寫法（2026-10-10）：
+    # - 先叫 8b 判斷「是不是在問記憶」：連真的問題也答「不是」，所以改用上面的規則
+    # - 問「資料裏有沒有寫到」：常答「沒有」；叫它照抄能回答的那一行準很多
+    # - 不放摘要（常寫「對方資料：無」）和對方問過的問題，8b 看了都會答「沒有」
+    lines = "\n".join([memory.get("facts", "")] + [f"- {t}" for t in said]).strip()
+    if not lines:
+        return ""
+    try:
+        found = llm.chat([{"role": "user", "content": f"""下面是對方的資料，每行一條，都是對方自己說的（「我」就是對方）：
+{lines}
+
+對方問：「{text}」
+從上面的資料裏，找出能回答這個問題的那一行，照抄輸出。
+問的是資料裏沒有的人或事（例如問媽媽的名字、住哪裏，資料裏沒寫），就只輸出「沒有」。"""}], temperature=0).strip()
+    except RuntimeError:
+        return None
+    return "" if found.startswith(("沒有", "没有")) else found.lstrip("- ")
 
 
 def vary_opening(reply, messages):
@@ -307,7 +343,11 @@ def reply_to(friend, messages, text):
     Retrying replies that repeat an earlier one was tried too (2026-10-10): 8b
     wrote the same sentence pattern again every time, so it only made replies slower.
     """
-    history = llm_messages(friend, messages)
+    memory = load_memory(friend)
+    # 還沒整理進資料的最近幾則：只給陳述句，問過的「你記得…嗎」會讓 8b 搞混
+    said = [m["text"] for m in messages[history_start(messages, memory):-1]
+            if m["role"] == "user" and not QUESTION.search(m["text"])]
+    history = llm_messages(friend, messages, recall=look_up(text, memory, said))
     for _ in range(3):
         raw = llm.chat(history)
         emotion, reply = parse_reply(raw)
@@ -330,12 +370,15 @@ def parse_reply(raw):
     return emotion, text
 
 
-def llm_messages(friend, messages, style=None):
-    memory = load_memory(friend)
+def history_start(messages, memory):
     # 摘要失敗的話也不要傳太多，最多兩倍 history_turns
-    start = next_user(messages, max(memory["upto"], len(messages) - history_turns() * 4))
-    out = [{"role": "system", "content": system_prompt(friend, memory, style)}]
-    for m in messages[start:]:
+    return next_user(messages, max(memory["upto"], len(messages) - history_turns() * 4))
+
+
+def llm_messages(friend, messages, style=None, recall=None):
+    memory = load_memory(friend)
+    out = [{"role": "system", "content": system_prompt(friend, memory, style, recall)}]
+    for m in messages[history_start(messages, memory):]:
         if m["role"] == "user":
             out.append({"role": "user", "content": m["text"]})
         else:

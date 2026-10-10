@@ -26,8 +26,8 @@ def describe():
     return f"{cfg['active']} · {cfg['providers'][cfg['active']]['model']}"
 
 
-def chat(messages):
-    return call(load_config()["active"], messages)
+def chat(messages, temperature=None):
+    return call(load_config()["active"], messages, temperature)
 
 
 def trim(messages, turns):
@@ -39,7 +39,7 @@ def trim(messages, turns):
     return head + tail
 
 
-def call(name, messages):
+def call(name, messages, temperature=None):
     p = load_config()["providers"][name]
     if p.get("history_turns"):
         messages = trim(messages, p["history_turns"])
@@ -52,7 +52,9 @@ def call(name, messages):
         # 讓 qwen3:14b 這類混合模型不思考，不然會花光 max_tokens 回覆變空白。
         # 在提示裏寫 /no_think 實測沒用；2507 版的 qwen3:4b 只會思考，這個也關不掉
         body["reasoning_effort"] = "none"
-    if "temperature" in p:
+    if temperature is not None:
+        body["temperature"] = temperature  # 查資料這類要穩定的用 0
+    elif "temperature" in p:
         body["temperature"] = p["temperature"]
     req = urllib.request.Request(f"{p['base_url'].rstrip('/')}/chat/completions",
                                  data=json.dumps(body).encode("utf-8"),
