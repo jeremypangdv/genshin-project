@@ -68,6 +68,8 @@ FORGET_STYLES = [
 # 對方在問「你記不記得我的…」：有這些字、是問句、還提到「我」，就先查資料（look_up）
 RECALL = re.compile(r"記得|记得|記不|忘了|忘記|還知道|我叫什麼|我的名字|說過|講過|告訴過|提過")
 QUESTION = re.compile(r"[？?]|嗎|什麼|哪|幾|誰|來着|是不是")
+# 說自己忘了的說法（「忘乎所以」「忘記帶傘」這種不算）
+FORGOT = re.compile(r"想不起|[記记]不(?:太)?[清起得]|不(?:太)?[記记]得|(?:好像|一時|我)忘(?:了|[記记]了?)")
 ASK_ENGLISH = re.compile(r"英文|英語|English", re.I)
 CHINESE = re.compile(r"[一-鿿]")
 # 開頭的語氣詞。小模型一害羞就每句都用「那個…」開頭，提示裏禁也禁不掉，所以最多每三句用一次
@@ -158,8 +160,10 @@ def system_prompt(friend, memory=None, style=None, recall=None):
 """ + (f"對方問的事你記得，對方說過：「{recall}」（這裏的「我」是對方）。直接肯定地回答，不要說忘了，也不用說「好像」。" if recall else
        f"對方問的事你聽過但忘了（不是不知道），不要猜答案，也不要拿別的事來湊。像人一樣自然地承認忘了，再請對方說一次。方式：{style}。"
        if recall == "" else
-       f"""{f"上面{known}寫的事，你都記得很清楚，被問到就肯定地回答，不用說「好像」。" + chr(10) if known else ""}對方說以前跟你講過、但{known + "和" if known else ""}這次對話裏都找不到的事，就是你聽過但忘了（不是不知道）：像人一樣自然地承認忘了，再請對方說一次，不要猜答案。這次要說忘了的話，方式是：{style}。""")
-# 放在最後，小模型比較聽；寫了固定例句（連他自己說過的句子也是）的話他會照抄，所以只說要怎樣
+       f"""{f"上面{known}寫的事，你都記得很清楚，被問到就肯定地回答，不用說「好像」。" + chr(10) if known else ""}對方問到對方自己的事、但{known + "和" if known else ""}這次對話裏都沒有的，不要猜答案，請對方告訴你。""")
+# 放在最後，小模型比較聽；寫了固定例句（連他自己說過的句子也是）的話他會照抄，所以只說要怎樣。
+# 「說忘了的方式」只在 look_up 查不到時才給：平常也放的話，8b 會在不相干的回覆後面硬加
+# 「我還在想佩伊的事，一時想不起來」（2000 輪測試約 0.5%，而且一段對話裏說過一次就一直套）
 
 
 def look_up(text, memory, said):
@@ -338,7 +342,8 @@ def similar(a, b):
 
 
 def reply_to(friend, messages, text):
-    """(raw, emotion, reply) for the last message; retried up to 3 times when it slips into English.
+    """(raw, emotion, reply) for the last message; retried up to 3 times when it slips into English,
+    or says it forgot when it shouldn't (or doesn't when look_up found nothing).
 
     Retrying replies that repeat an earlier one was tried too (2026-10-10): 8b
     wrote the same sentence pattern again every time, so it only made replies slower.
@@ -347,11 +352,16 @@ def reply_to(friend, messages, text):
     # 還沒整理進資料的最近幾則：只給陳述句，問過的「你記得…嗎」會讓 8b 搞混
     said = [m["text"] for m in messages[history_start(messages, memory):-1]
             if m["role"] == "user" and not QUESTION.search(m["text"])]
-    history = llm_messages(friend, messages, recall=look_up(text, memory, said))
+    recall = look_up(text, memory, said)
+    history = llm_messages(friend, messages, recall=recall)
     for _ in range(3):
         raw = llm.chat(history)
         emotion, reply = parse_reply(raw)
-        if not ENGLISH.search(reply) or wants_english(text):
+        english = ENGLISH.search(reply) and not wants_english(text)
+        # 查不到時要說忘了，其他時候不要說忘了；不對就重新生成。
+        # 只靠提示的話，兩邊都會錯：答完問題後面硬加「想不起來」，或者被告知忘了還自己猜一個
+        wrong = bool(FORGOT.search(reply)) != (recall == "")
+        if not english and not wrong:
             break
     return raw, emotion, reply
 
