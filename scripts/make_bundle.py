@@ -2,7 +2,7 @@
 
     python scripts/make_bundle.py
 
-Run build_exe.bat first. Puts everything in dist/Freminet Chat/ (about 20GB):
+Run build_exe.bat first. Puts everything in dist/Freminet Chat/ (about 22GB):
 the app, the voice model, a trimmed copy of GPT-SoVITS (its runtime also runs
 the app), and Ollama with qwen3:8b and the embedding model for memory.
 Chats on this computer are not included.
