@@ -4,7 +4,8 @@
 
 Run build_exe.bat first. Puts everything in dist/Freminet Chat/ (about 20GB):
 the app, the voice model, a trimmed copy of GPT-SoVITS (its runtime also runs
-the app), and Ollama with qwen3:8b. Chats on this computer are not included.
+the app), and Ollama with qwen3:8b and the embedding model for memory.
+Chats on this computer are not included.
 """
 
 import json
@@ -19,7 +20,7 @@ OUT = PROJECT / "dist" / "Freminet Chat"
 GSV = PROJECT / json.loads((PROJECT / "config" / "tts.json").read_text(encoding="utf-8"))["gpt_sovits"]
 OLLAMA_APP = Path(os.environ["LOCALAPPDATA"]) / "Programs" / "Ollama"
 OLLAMA_MODELS = Path(os.environ.get("OLLAMA_MODELS") or Path.home() / ".ollama" / "models")
-MODEL = ("qwen3", "8b")
+MODELS = [("qwen3", "8b"), ("qwen3-embedding", "0.6b")]  # 聊天模型、記憶用的 embedding 模型
 PORT = 11435  # 和 launcher.py 一樣，不和朋友自己的 Ollama 撞
 
 
@@ -46,7 +47,8 @@ def main():
     provider = {**cfg["providers"]["ollama_8b"], "base_url": f"http://127.0.0.1:{PORT}/v1"}
     (OUT / "config").mkdir(exist_ok=True)
     (OUT / "config" / "llm.json").write_text(json.dumps(
-        {"active": "ollama_8b", "providers": {"ollama_8b": provider}, "history_turns": cfg["history_turns"]},
+        {"active": "ollama_8b", "providers": {"ollama_8b": provider}, "history_turns": cfg["history_turns"],
+         "embed_model": cfg["embed_model"]},
         ensure_ascii=False, indent=2), encoding="utf-8")
     (OUT / "config" / "tts.json").write_text(json.dumps({"gpt_sovits": "GPT-SoVITS"}, indent=2), encoding="utf-8")
 
@@ -67,17 +69,20 @@ def main():
     (OUT / "ollama").mkdir(exist_ok=True)
     shutil.copy2(OLLAMA_APP / "ollama.exe", OUT / "ollama")
     robocopy(OLLAMA_APP / "lib", OUT / "ollama" / "lib", "/XD", "rocm")
-    manifest = OLLAMA_MODELS / "manifests" / "registry.ollama.ai" / "library" / MODEL[0] / MODEL[1]
-    target = OUT / "ollama" / "models" / manifest.relative_to(OLLAMA_MODELS)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(manifest, target)
-    info = json.loads(manifest.read_text(encoding="utf-8"))
-    (OUT / "ollama" / "models" / "blobs").mkdir(exist_ok=True)
-    for layer in [info["config"], *info["layers"]]:
-        blob = layer["digest"].replace(":", "-")
-        dst = OUT / "ollama" / "models" / "blobs" / blob
-        if not dst.exists() or dst.stat().st_size != layer["size"]:
-            shutil.copy2(OLLAMA_MODELS / "blobs" / blob, dst)
+    (OUT / "ollama" / "models" / "blobs").mkdir(parents=True, exist_ok=True)
+    for name, tag in MODELS:
+        manifest = OLLAMA_MODELS / "manifests" / "registry.ollama.ai" / "library" / name / tag
+        if not manifest.is_file():
+            sys.exit(f"先下載模型：ollama pull {name}:{tag}")
+        target = OUT / "ollama" / "models" / manifest.relative_to(OLLAMA_MODELS)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(manifest, target)
+        info = json.loads(manifest.read_text(encoding="utf-8"))
+        for layer in [info["config"], *info["layers"]]:
+            blob = layer["digest"].replace(":", "-")
+            dst = OUT / "ollama" / "models" / "blobs" / blob
+            if not dst.exists() or dst.stat().st_size != layer["size"]:
+                shutil.copy2(OLLAMA_MODELS / "blobs" / blob, dst)
 
     (OUT / "使用說明.txt").write_text(README, encoding="utf-8")
     size = sum(f.stat().st_size for f in OUT.rglob("*") if f.is_file()) / 1e9

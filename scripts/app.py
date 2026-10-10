@@ -33,7 +33,9 @@ PROJECT = tts.PROJECT
 APP_DIR = PROJECT / "app"
 CHAT_DIR = PROJECT / "chats"
 CHARACTER_DIR = PROJECT / "characters"
-MAX_FACTS = 400  # 對方的資料超過這麼多字，才請 LLM 合併重複的
+MAX_FACTS = 400  # 對方的資料超過這麼多字，系統提示只放和這則訊息最相關的（全部還是存着）
+RELATED = 0.5  # 新舊兩條資料的 embedding 相似度到這個（「麵包店打工」和「現在在咖啡店上班」約 0.55），才問 8b 新的有沒有取代舊的
+LOOKUP_LINES = 8  # look_up 最多給 8b 看幾行
 KEEP_VOICES = 50  # 每個角色只留最近 50 則語音（約 25MB），更早的刪掉 wav，只剩文字
 # avatar 是沒有頭像圖片時顯示的字；image 放在 characters/ 裏
 # backgrounds 是聊天背景圖的資料夾，background 是還沒選過時預設用的那張
@@ -70,6 +72,9 @@ RECALL = re.compile(r"記得|记得|記不|忘了|忘記|還知道|我叫什麼|
 QUESTION = re.compile(r"[？?]|嗎|什麼|哪|幾|誰|來着|是不是")
 # 說自己忘了的說法（「忘乎所以」「忘記帶傘」這種不算）
 FORGOT = re.compile(r"想不起|[記记]不(?:太)?[清起得]|不(?:太)?[記记]得|(?:好像|一時|我)忘(?:了|[記记]了?)")
+IF = re.compile(r"(?:如果|要是|假如|假設|萬一)")  # 假設的事不算對方的資料
+# 名字那條資料一定放進系統提示
+NAME = re.compile(r"名字|叫我|我叫|^-?\s*叫")
 ASK_ENGLISH = re.compile(r"英文|英語|English", re.I)
 CHINESE = re.compile(r"[一-鿿]")
 # 開頭的語氣詞。小模型一害羞就每句都用「那個…」開頭，提示裏禁也禁不掉，所以最多每三句用一次
@@ -125,6 +130,7 @@ def warm_up():
         print(" 完成")
     except RuntimeError as e:
         print(f" 失敗：{e}")
+    llm.embed(["你好"])  # 載入 embedding 模型；沒有的話也能聊，只是退回比對文字
 
 
 @atexit.register
@@ -150,7 +156,7 @@ def system_prompt(friend, memory=None, style=None, recall=None):
 - 不用每次都補充自己的事，也不用每次都反問對方，大部分回覆說完就停。
 - 不要提到自己是 AI 或語言模型。""" + (f"""
 
-## 對方的資料（對方以前親口告訴你的）
+## 對方的資料（對方以前親口告訴你的，越後面越新，前後不一樣的以後面為準）
 {facts}""" if facts else "") + (f"""
 
 ## 最近聊過的事（摘要）
@@ -180,15 +186,18 @@ def look_up(text, memory, said):
     # - 先叫 8b 判斷「是不是在問記憶」：連真的問題也答「不是」，所以改用上面的規則
     # - 問「資料裏有沒有寫到」：常答「沒有」；叫它照抄能回答的那一行準很多
     # - 不放摘要（常寫「對方資料：無」）和對方問過的問題，8b 看了都會答「沒有」
-    lines = "\n".join([memory.get("facts", "")] + [f"- {t}" for t in said]).strip()
+    # 資料多了只給最相關的幾行，用意思找（「寵物」找得到「養了一隻貓」），不是比對字面
+    every = [l for l in memory.get("facts", "").splitlines() if l.strip()] + [f"- {t}" for t in said]
+    top = set(rank(every, text)[:LOOKUP_LINES])
+    lines = "\n".join(l for l in every if l in top).strip()  # 照時間排，越後面越新
     if not lines:
         return ""
     try:
-        found = llm.chat([{"role": "user", "content": f"""下面是對方的資料，每行一條，都是對方自己說的（「我」就是對方）：
+        found = llm.chat([{"role": "user", "content": f"""下面是對方的資料，每行一條，都是對方自己說的（「我」就是對方），按時間排，越後面越新：
 {lines}
 
 對方問：「{text}」
-從上面的資料裏，找出能回答這個問題的那一行，照抄輸出。
+從上面的資料裏，找出能回答這個問題的那一行，照抄輸出。同一件事前後說的不一樣（例如換了工作），用後面那行。
 問的是資料裏沒有的人或事（例如問媽媽的名字、住哪裏，資料裏沒寫），就只輸出「沒有」。"""}], temperature=0).strip()
     except RuntimeError:
         return None
@@ -286,8 +295,7 @@ def summarize(friend):
     lines = "\n".join(
         f"{'對方' if m['role'] == 'user' else '菲米尼'}：{m['text']}" for m in messages[memory["upto"]:cut])
     try:
-        facts = merge_facts(memory["facts"], "\n".join(
-            m["text"] for m in messages[memory["upto"]:cut] if m["role"] == "user"))
+        facts = merge_facts(memory["facts"], [m["text"] for m in messages[memory["upto"]:cut] if m["role"] == "user"])
         summary = llm.chat([{"role": "user", "content": f"""把菲米尼和對方最近聊的話題整理成摘要，給菲米尼以後記得聊過什麼。
 - 寫聊過的話題、約定、對方的心情、兩人關係的變化；對方的個人資料（名字、家人、寵物、生日、喜好…）另外記，這裏一律不寫
 - 只寫聊天裏真的出現過的，不要推測或補充
@@ -307,32 +315,166 @@ def summarize(friend):
 
 
 def merge_facts(facts, said):
-    """Add what the other person said about themself; old facts are only shortened, never dropped.
+    """Add what the other person said about themself; an old fact only goes when a newer one changes it.
 
-    said is only their own messages, so Freminet's own likes don't end up in it,
-    and repeats are skipped here because the model writes known facts again anyway.
+    said is only their own messages, so Freminet's own likes don't end up in it.
+    Three checks keep the facts right (2026-10-10):
+    - facts are taken from one message at a time and 8b checks each against its message,
+      so guesses, "if…" plans and other people's things don't end up as theirs
+    - a fact close in meaning to old ones (embedding) asks 8b whether it changes one
+      ("doesn't like cats any more"); then the old one is dropped instead of keeping both
+    - repeats are skipped, because the model writes known facts again anyway
     """
-    new = llm.chat([{"role": "user", "content": f"""下面是對方傳的訊息。找出對方說的關於自己的事實：名字、家人、寵物、工作、學校、生日、喜歡和討厭的東西、害怕的東西、計劃。
-- 每行一條，用「- 」開頭，用繁體中文，寫具體的名字和數字（例如「- 養了一隻黑貓，叫芝麻」）
-- 只寫對方明確說了的，問句和閒聊不算；沒有就只輸出「沒有」
-- 每一條只根據一則訊息，不要把不同訊息的內容拼在一起（例如「我生日是三月」和「下個月去旅行」是兩件事）
-
-{said}"""}]).strip()
-    lines = facts.splitlines()
-    for line in new.splitlines():
-        line = line.strip()
-        if line.startswith("-") and line.strip(" -。") not in ("沒有", "没有", "無", "无") \
-                and not any(similar(line.lstrip("- "), old.lstrip("- ")) for old in lines):
-            lines.append(line)
-    if len("\n".join(lines)) > MAX_FACTS:
-        # 太長才請它合併重複的、刪掉被新資料取代的，但不能少了任何一件事
-        short = [l.strip() for l in llm.chat([{"role": "user", "content": f"""把這份關於對方的資料整理得更短：合併重複的，同一件事前後不同的只留後面（較新）的。
-其他每一件事都要留着，不能刪；用繁體中文，每行一條，用「- 」開頭，只輸出資料。
-
-{chr(10).join(lines)}"""}]).splitlines() if l.strip().startswith("-")]
-        if len(short) >= len(lines) // 2:  # 刪太多的話就不用它的版本
-            lines = short
+    # 「如果…」的事 check_facts 常常放行（200 輪測試 10 段對話有 4 段存了），開頭是假設的直接丟掉
+    found = [(t, f) for t in said for f in facts_in(t) if not IF.match(f)]
+    lines = [l for l in facts.splitlines() if l.strip()]
+    for fact in check_facts(found):
+        old = replaced(fact, lines)
+        if old == "重複" or (old is None and any(similar(fact, l.lstrip("- ")) for l in lines)):
+            continue
+        lines = [l for l in lines if l not in (old or [])] + [f"- {fact}"]
     return "\n".join(lines)
+
+
+def facts_in(text):
+    """Facts about the other person in one of their messages.
+
+    One message a call: given several at once, 8b often skipped one or two
+    (「我現在不太喜歡貓了」 was dropped every time next to other messages), and it
+    sometimes joined two messages into one wrong fact ("birthday is next month").
+    Asked to "find the facts", 8b said there were none in 「我很喜歡貓」 or 「我不能吃辣」;
+    asked to rewrite the message, with examples, it got all of them. It also rewrites
+    some "if…" and small talk, which check_facts() then drops.
+    """
+    try:
+        out = llm.chat([{"role": "user", "content": f"""把對方說的話改寫成「關於對方的資料」，給以後記得對方用。
+
+例子：
+訊息：「我家的狗叫豆豆」→ - 養了一隻狗，叫豆豆
+訊息：「我超愛吃草莓」→ - 很喜歡吃草莓
+訊息：「明天我要去面試」→ - 明天要去面試
+訊息：「我不住台北了，搬去台中」→ - 搬到台中了
+訊息：「我姐在當護士」→ - 有一個姐姐，是護士
+訊息：「如果有錢我想去冰島」→ 沒有
+訊息：「你今天做了什麼？」→ 沒有
+訊息：「今天好熱喔」→ 沒有
+訊息：「我同學很會畫畫」→ 沒有
+
+只改寫對方明確說的自己的事，一件一行，用「- 」開頭，繁體中文；沒有就輸出「沒有」。
+訊息：「{text}」→"""}], temperature=0)
+    except RuntimeError:
+        return []
+    return [l.strip().lstrip("- ").strip(" 。") for l in out.splitlines()
+            if l.strip().startswith("-") and l.strip(" -。") not in ("沒有", "没有", "無", "无")]
+
+
+def check_facts(found):
+    """Facts from found ((message, fact) pairs) that the message really says; 8b sometimes writes a guess."""
+    if not found:
+        return []
+    listed = "\n".join(f"{i}. 訊息：「{t}」 資料：「{f}」" for i, (t, f) in enumerate(found, 1))
+    try:
+        out = llm.chat([{"role": "user", "content": f"""每一條是對方傳的一則訊息，和從它整理出來的一條資料。判斷資料對不對：
+- 對：訊息裏對方明確說了這件關於自己的事
+- 錯：訊息裏沒說、是推測或補充的、是假設（「如果…」）或問句、把別人的事寫成對方的、名字或數字寫錯
+每行輸出「編號 對」或「編號 錯」，不要其他文字。
+
+{listed}"""}], temperature=0)
+    except RuntimeError:
+        return [f for _, f in found]
+    wrong = {int(n) for n in re.findall(r"(\d+)\s*[.:：、]?\s*錯", out)}
+    return [f for i, (_, f) in enumerate(found, 1) if i not in wrong]
+
+
+def replaced(fact, lines):
+    """Old lines the new fact replaces, "重複" when it says the same as one, [] when it's something new,
+    or None when the embedding model isn't there.
+
+    Asks about one old line at a time, "is it still true?": giving 8b all the close lines
+    at once and asking which one changed, it said "likes cats" replaced "has a cat called 布丁".
+    Its examples matter: with "moved from 台北 to 台中" as the example, "moved to 台中"
+    replaced "going to Japan next month".
+    A "不對" is asked again in other words before the old line goes: one question alone
+    still dropped things that were true ("works at a flower shop" dropped "lives in 花蓮"),
+    and both together made no wrong deletions in 34 test pairs. An old line that should
+    have gone but stays is less bad: the newer one comes later and the prompts say later wins.
+    """
+    vecs = vectors([fact] + [l.lstrip("- ") for l in lines])
+    if vecs is None:
+        return None
+    near = sorted(((llm.cosine(vecs[0], v), l) for v, l in zip(vecs[1:], lines)), reverse=True)
+    gone = []
+    for _, old in [n for n in near[:3] if n[0] >= RELATED]:
+        try:
+            out = llm.chat([{"role": "user", "content": f"""舊資料（以前記下的）：{old.lstrip("- ")}
+新資料（對方剛剛說的）：{fact}
+
+聽了新資料以後，舊資料還對嗎？只輸出一個詞：
+- 「不對」：舊資料被新資料改掉了，現在已經不是這樣（例如舊「在讀高二」新「升上高三了」）
+- 「重複」：兩條說的是同一件事
+- 「還對」：兩條說的是不同的事，可以同時成立（例如舊「在讀大學」新「在餐廳打工」）
+注意：工作、住的地方、「最喜歡」的東西通常只有一個，新的說「現在…」就是換了，舊的不對。"""}],
+                           temperature=0).strip()
+        except RuntimeError:
+            continue
+        if out.startswith(("重複", "重复")):
+            return "重複"
+        if out.startswith(("不對", "不对")) and not still_true(old, fact):
+            gone.append(old)
+    return gone
+
+
+def still_true(old, fact):
+    """Second check before an old line is dropped: False only when 8b also says it's no longer true."""
+    try:
+        out = llm.chat([{"role": "user", "content": f"""對方剛剛說：「{fact}」
+以前記下對方：「{old.lstrip("- ")}」
+
+根據對方剛剛說的話，以前記下的這條現在還是真的嗎？
+- 對方剛剛的話明確表示這條已經變了、不再是這樣：輸出「不對」
+- 兩條其實是同一件事：輸出「重複」
+- 對方剛剛的話和這條無關，或者兩條可以同時成立：輸出「還對」
+只輸出一個詞。"""}], temperature=0).strip()
+    except RuntimeError:
+        return True
+    return not out.startswith(("不對", "不对"))
+
+
+_vectors = {}  # 算過的 embedding，資料多了也不用每則訊息重算
+
+
+def vectors(texts):
+    """Embedding of each text, or None when the embedding model isn't there."""
+    todo = list(dict.fromkeys(t for t in texts if t not in _vectors))
+    if todo:
+        got = llm.embed(todo)
+        if not got:
+            return None
+        _vectors.update(zip(todo, got))
+    return [_vectors[t] for t in texts]
+
+
+def rank(lines, text):
+    """lines, the closest in meaning to text first; in the old order when the embedding model isn't there."""
+    vecs = vectors([text] + [l.lstrip("- ") for l in lines]) if len(lines) > 1 else None
+    if vecs is None:
+        return lines
+    order = sorted(range(len(lines)), key=lambda i: -llm.cosine(vecs[0], vecs[i + 1]))
+    return [lines[i] for i in order]
+
+
+def relevant_facts(facts, text):
+    """All the facts while they fit in MAX_FACTS; after that the name and the ones closest to this message."""
+    if len(facts) <= MAX_FACTS:
+        return facts
+    lines = [l for l in facts.splitlines() if l.strip()]
+    keep = {l for l in lines if NAME.search(l)}
+    used = sum(len(l) + 1 for l in keep)
+    for l in rank(lines, text):
+        if l not in keep and used + len(l) + 1 <= MAX_FACTS:
+            keep.add(l)
+            used += len(l) + 1
+    return "\n".join(l for l in lines if l in keep)  # 照原本的順序
 
 
 def similar(a, b):
@@ -387,6 +529,8 @@ def history_start(messages, memory):
 
 def llm_messages(friend, messages, style=None, recall=None):
     memory = load_memory(friend)
+    if messages and messages[-1]["role"] == "user":
+        memory = {**memory, "facts": relevant_facts(memory.get("facts", ""), messages[-1]["text"])}
     out = [{"role": "system", "content": system_prompt(friend, memory, style, recall)}]
     for m in messages[history_start(messages, memory):]:
         if m["role"] == "user":

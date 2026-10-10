@@ -6,6 +6,7 @@ Uses only the standard library.
 """
 
 import json
+import math
 import re
 import sys
 import urllib.error
@@ -68,6 +69,30 @@ def call(name, messages, temperature=None):
         raise RuntimeError(f"連不上 {name}：{e.reason}{hint}") from None
     text = data["choices"][0]["message"].get("content") or ""
     return THINK.sub("", text).strip()
+
+
+def embed(texts):
+    """Vectors for texts from the embedding model (embed_model in config/llm.json), or None if it fails.
+
+    Runs on the CPU (num_gpu 0): the 6GB card is already full with GPT-SoVITS and 8b,
+    and the 0.6b model takes about 0.1 s a call there anyway.
+    """
+    cfg = load_config()
+    if not texts or not cfg.get("embed_model"):
+        return None
+    base = re.sub(r"/v1/?$", "", cfg["providers"][cfg["active"]]["base_url"])
+    body = {"model": cfg["embed_model"], "input": texts, "options": {"num_gpu": 0}, "keep_alive": -1}
+    req = urllib.request.Request(f"{base}/api/embed", data=json.dumps(body).encode("utf-8"),
+                                 headers={"Content-Type": "application/json"})
+    try:
+        return json.loads(urllib.request.urlopen(req, timeout=60).read())["embeddings"]
+    except (OSError, KeyError, ValueError) as e:
+        print(f"embedding 失敗：{e}")
+        return None
+
+
+def cosine(a, b):
+    return sum(x * y for x, y in zip(a, b)) / (math.sqrt(sum(x * x for x in a) * sum(y * y for y in b)) or 1)
 
 
 def is_local():
