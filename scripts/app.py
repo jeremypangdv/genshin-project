@@ -37,6 +37,7 @@ MAX_FACTS = 400  # 對方的資料超過這麼多字，系統提示只放和這�
 RELATED = 0.5  # 新舊兩條資料的 embedding 相似度到這個（「麵包店打工」和「現在在咖啡店上班」約 0.55），才問 8b 新的有沒有取代舊的
 LOOKUP_LINES = 8  # look_up 最多給 8b 看幾行
 KEEP_VOICES = 50  # 每個角色只留最近 50 則語音（約 25MB），更早的刪掉 wav，只剩文字
+MAX_LORE = 2  # 詳細資料（characters/<friend>-lore.md）每則訊息最多放幾段，上下文只有 4096
 # avatar 是沒有頭像圖片時顯示的字；image 放在 characters/ 裏
 # backgrounds 是聊天背景圖的資料夾，background 是還沒選過時預設用的那張
 # cursor 是跟着滑鼠的小圖；指着可以點的東西時換 cursor_click，指着輸入欄時換 cursor_text
@@ -157,9 +158,40 @@ def stop_voice():
         voice["proc"].terminate()
 
 
-def system_prompt(friend, memory=None, style=None, recall=None):
-    """recall is what look_up() found when the message asks whether he remembers something."""
+def load_lore(friend):
+    """[(keywords, section)] from characters/<friend>-lore.md: each "## " section has a 關鍵詞： line."""
+    path = CHARACTER_DIR / f"{friend}-lore.md"
+    if not path.is_file():
+        return []
+    out = []
+    for part in re.split(r"^(?=## )", path.read_text(encoding="utf-8"), flags=re.M)[1:]:
+        m = re.search(r"^關鍵詞：(.*)\n?", part, re.M)
+        if m:
+            words = [w.strip() for w in re.split(r"[、,，]", m.group(1)) if w.strip()]
+            out.append((words, (part[:m.start()] + part[m.end():]).strip()))
+    return out
+
+
+def lore_for(friend, messages):
+    """The sections whose keywords are in the last user message, or else in the one before it,
+    so a follow-up like「然後呢？」still has them. At most MAX_LORE, the most keyword hits first."""
+    users = [m["text"] for m in messages if m["role"] == "user"][-2:]
+    lore = load_lore(friend)
+    for text in reversed(users):
+        hits = sorted(((-sum(w in text for w in words), i) for i, (words, _) in enumerate(lore)))
+        found = [lore[i][1] for n, i in hits[:MAX_LORE] if n]
+        if found:
+            return found
+    return []
+
+
+def system_prompt(friend, memory=None, style=None, recall=None, lore=None):
+    """recall is what look_up() found when the message asks whether he remembers something;
+    lore is the detailed sections from lore_for()."""
     persona = (CHARACTER_DIR / f"{friend}.md").read_text(encoding="utf-8")
+    if lore:
+        persona += ("\n\n# 和這次話題有關的詳細回憶（只有你自己知道的經歷。按現在和對方的熟悉程度，自然地挑一點說，"
+                    "不要一次全說出來，也不要照抄）\n\n" + "\n\n".join(lore))
     emotions = "、".join(f"[{e}]（{NAMES.get(e, e)}）" for e in info["refs"])
     facts, summary = (memory or {}).get("facts", ""), (memory or {}).get("summary", "")
     known = "、".join(k for k, v in (("「對方的資料」", facts), ("摘要", summary)) if v)
@@ -549,7 +581,7 @@ def llm_messages(friend, messages, style=None, recall=None):
     memory = load_memory(friend)
     if messages and messages[-1]["role"] == "user":
         memory = {**memory, "facts": relevant_facts(memory.get("facts", ""), messages[-1]["text"])}
-    out = [{"role": "system", "content": system_prompt(friend, memory, style, recall)}]
+    out = [{"role": "system", "content": system_prompt(friend, memory, style, recall, lore_for(friend, messages))}]
     for m in messages[history_start(messages, memory):]:
         if m["role"] == "user":
             out.append({"role": "user", "content": m["text"]})
