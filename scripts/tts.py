@@ -7,6 +7,7 @@ switch to another training epoch, or try another reference clip.
 Uses only the standard library; playback uses winsound, so Windows only.
 """
 
+import array
 import io
 import json
 import os
@@ -57,25 +58,31 @@ def api_up():
         return False
 
 
-def has_cuda():
-    """Ask GPT-SoVITS's own torch whether there is an NVIDIA GPU it can use."""
-    result = subprocess.run([str(PYTHON), "-s", "-c", "import torch; print(torch.cuda.is_available())"],
+def gpu_mode():
+    """Ask GPT-SoVITS's own config which device to use and whether half precision works there.
+
+    Half precision gives silent audio on GTX 10/16 cards, and GPT-SoVITS's config.py
+    already knows which cards those are.
+    """
+    result = subprocess.run([str(PYTHON), "-s", "-c", "import config; print(config.infer_device.type, config.is_half)"],
                             cwd=GSV, capture_output=True, text=True)
-    return result.stdout.strip() == "True"
+    device, _, half = result.stdout.strip().rpartition("\n")[2].partition(" ")
+    return device == "cuda", device == "cuda" and half == "True"
 
 
-def start_api(info):
+def start_api(info, cpu=False):
+    """cpu=True skips the GPU even if there is one (for cards this torch can't run, like the RTX 50 series)."""
     if not PYTHON.exists():
         print(f"找不到 GPT-SoVITS：{GSV}\n請把 config/tts.json 的 gpt_sovits 改成整合包的資料夾")
         sys.exit(1)
-    cuda = has_cuda()
-    if not cuda:
+    cuda, half = (False, False) if cpu else gpu_mode()
+    if not cuda and not cpu:
         print("找不到 NVIDIA 顯卡，改用 CPU（每句會慢很多）")
     config = {"custom": {
         "bert_base_path": "GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large",
         "cnhuhbert_base_path": "GPT_SoVITS/pretrained_models/chinese-hubert-base",
         "device": "cuda" if cuda else "cpu",
-        "is_half": cuda,  # CPU 不支援半精度
+        "is_half": half,  # CPU 和 GTX 10/16 系列用半精度會沒聲音
         "version": info["version"],
         "t2s_weights_path": str(MODEL_DIR / info["gpt"]),
         "vits_weights_path": str(MODEL_DIR / info["sovits"]),
@@ -218,6 +225,13 @@ def synthesize(text, ref):
         w.setparams(params)
         w.writeframes(gap.join(parts))
     return path
+
+
+def is_silent(path):
+    """True if the wav has no real sound; a GPU this torch doesn't support makes wavs like that."""
+    with wave.open(str(path)) as w:
+        samples = array.array("h", w.readframes(w.getnframes()))
+    return not samples or max(samples) - min(samples) < 100
 
 
 def speak(text, ref):

@@ -116,13 +116,17 @@ def warm_up():
     model), so this makes the first real message as fast as the rest.
     Nothing here is saved to the chat.
     """
-    if voice["state"] == "ready":
-        print("預熱語音模型…", end="", flush=True)
+    if voice["state"] == "ready" and not voice_works() and voice["proc"]:
+        # 顯卡太新（例如 RTX 50 系列，這版 torch 不支援）念出來沒聲音或出錯：改用 CPU 重新載入
+        print("顯卡念不出聲音，改用 CPU 重新載入語音模型（每句會慢一點）")
+        voice["proc"].terminate()
+        voice["proc"].wait()
         try:
-            tts.synthesize("你好，我是菲米尼。", info["refs"][info["default_emotion"]][0]).unlink()
-            print(" 完成")
-        except Exception as e:
-            print(f" 失敗：{e}")
+            voice["proc"] = tts.start_api(info, cpu=True)
+        except (Exception, SystemExit):
+            voice["state"], voice["proc"] = "failed", None
+        if voice["state"] == "ready" and not voice_works():
+            voice["state"] = "failed"
     print(f"預熱 LLM（{llm.load_config()['active']}）…", end="", flush=True)
     try:
         # 用真的系統提示，Ollama 會把這段快取起來，第一則訊息就不用重新讀
@@ -131,6 +135,20 @@ def warm_up():
     except RuntimeError as e:
         print(f" 失敗：{e}")
     llm.embed(["你好"])  # 載入 embedding 模型；沒有的話也能聊，只是退回比對文字
+
+
+def voice_works():
+    """Say one throwaway line; False if it fails or comes out silent."""
+    print("預熱語音模型…", end="", flush=True)
+    try:
+        path = tts.synthesize("你好，我是菲米尼。", info["refs"][info["default_emotion"]][0])
+        silent = tts.is_silent(path)
+        path.unlink()
+    except Exception as e:
+        print(f" 失敗：{e}")
+        return False
+    print(" 沒有聲音" if silent else " 完成")
+    return not silent
 
 
 @atexit.register
