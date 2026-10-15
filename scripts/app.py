@@ -37,7 +37,7 @@ MAX_FACTS = 400  # 對方的資料超過這麼多字，系統提示只放和這�
 RELATED = 0.5  # 新舊兩條資料的 embedding 相似度到這個（「麵包店打工」和「現在在咖啡店上班」約 0.55），才問 8b 新的有沒有取代舊的
 LOOKUP_LINES = 8  # look_up 最多給 8b 看幾行
 KEEP_VOICES = 50  # 每個角色只留最近 50 則語音（約 25MB），更早的刪掉 wav，只剩文字
-MAX_LORE = 2  # 詳細資料（characters/<friend>-lore.md）每則訊息最多放幾段，上下文只有 4096
+MAX_LORE = 2  # 詳細資料（characters/<friend>-lore.md）每則訊息最多放幾段，上下文只有 num_ctx（4096）
 # avatar 是沒有頭像圖片時顯示的字；image 放在 characters/ 裏
 # backgrounds 是聊天背景圖的資料夾，background 是還沒選過時預設用的那張
 # cursor 是跟着滑鼠的小圖；指着可以點的東西時換 cursor_click，指着輸入欄時換 cursor_text
@@ -317,7 +317,7 @@ def load_memory(friend):
 
 def history_turns():
     cfg = llm.load_config()
-    # Ollama 的上下文只有 4096，角色資料就佔了一半多，所以可以按模型設定記住幾輪
+    # Ollama 的上下文只有 num_ctx（4096），角色資料加詳細資料約佔一半，所以可以按模型設定記住幾輪
     return cfg["providers"][cfg["active"]].get("history_turns", cfg.get("history_turns", 20))
 
 

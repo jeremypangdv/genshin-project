@@ -44,20 +44,19 @@ def call(name, messages, temperature=None):
     p = load_config()["providers"][name]
     if p.get("history_turns"):
         messages = trim(messages, p["history_turns"])
-    body = {
-        "model": p["model"],
-        "messages": messages,
-        "max_tokens": p.get("max_tokens", 300),
-    }
+    # 用 Ollama 原生的 /api/chat：OpenAI 相容的 /v1 不能設 num_ctx，只能用預設的 4096，
+    # 角色資料加兩段詳細資料加對話就超過，最前面的提示會被截掉
+    options = {"num_predict": p.get("max_tokens", 300), "num_ctx": p.get("num_ctx", 4096)}
+    if temperature is not None:
+        options["temperature"] = temperature  # 查資料這類要穩定的用 0
+    elif "temperature" in p:
+        options["temperature"] = p["temperature"]
+    body = {"model": p["model"], "messages": messages, "stream": False, "options": options}
     if p.get("no_think"):
         # 讓 qwen3:14b 這類混合模型不思考，不然會花光 max_tokens 回覆變空白。
         # 在提示裏寫 /no_think 實測沒用；2507 版的 qwen3:4b 只會思考，這個也關不掉
-        body["reasoning_effort"] = "none"
-    if temperature is not None:
-        body["temperature"] = temperature  # 查資料這類要穩定的用 0
-    elif "temperature" in p:
-        body["temperature"] = p["temperature"]
-    req = urllib.request.Request(f"{p['base_url'].rstrip('/')}/chat/completions",
+        body["think"] = False
+    req = urllib.request.Request(f"{ollama_url(p)}/api/chat",
                                  data=json.dumps(body).encode("utf-8"),
                                  headers={"Content-Type": "application/json"})
     try:
@@ -67,8 +66,13 @@ def call(name, messages, temperature=None):
     except urllib.error.URLError as e:
         hint = {"ollama": "（Ollama 有沒有開？）", "server": "（另一部電腦的 start_server.bat 有沒有開？IP 對不對？）"}.get(name, "")
         raise RuntimeError(f"連不上 {name}：{e.reason}{hint}") from None
-    text = data["choices"][0]["message"].get("content") or ""
+    text = data["message"].get("content") or ""
     return THINK.sub("", text).strip()
+
+
+def ollama_url(p):
+    """Ollama's own address from a provider's base_url (config keeps the OpenAI-style .../v1)."""
+    return re.sub(r"/v1/?$", "", p["base_url"].rstrip("/"))
 
 
 def embed(texts):
@@ -80,7 +84,7 @@ def embed(texts):
     cfg = load_config()
     if not texts or not cfg.get("embed_model"):
         return None
-    base = re.sub(r"/v1/?$", "", cfg["providers"][cfg["active"]]["base_url"])
+    base = ollama_url(cfg["providers"][cfg["active"]])
     body = {"model": cfg["embed_model"], "input": texts, "options": {"num_gpu": 0}, "keep_alive": -1}
     req = urllib.request.Request(f"{base}/api/embed", data=json.dumps(body).encode("utf-8"),
                                  headers={"Content-Type": "application/json"})
