@@ -236,7 +236,7 @@ python scripts/app.py
 | `chats/` | 聊天記錄（不放進 git）；介面右上角垃圾桶可以清除，連摘要和語音檔一起清 |
 | `chats/<角色>.memory.json` | 舊對話的記憶：`facts` 對方的資料、`summary` 聊過的話題，和 `upto`（記憶包括到第幾則訊息） |
 | `chats/<角色>@<名字>.json`、`.memory.json` | 用連結分享時，每個朋友自己的聊天記錄和記憶 |
-| `share/` | 用連結分享給朋友：`分享給朋友.bat` 跑 `share.py`；`ngrok.exe` 第一次用時自動下載，不放進 git |
+| `share/` | 用連結分享給朋友：`分享給朋友.bat` 跑 `share.py`，用 `C:\ngrok\ngrok.exe` |
 
 - **介面右上角**（由左到右）：
   - ⚙ 聊天背景：小窗裏用左右箭頭或滑鼠滾輪切換，外面的背景即時跟着換；可以下載目前這張，或上傳新圖（存進 `freminet profile/Background/`，同名會自動改名）。可以一次選多張上傳，不合要求的會跳過（滑鼠停在失敗訊息上看原因）。上傳只收 JPG / JPEG / PNG，長和寬都至少要和視窗一樣（860×860），鋪滿時才不會拉大變模糊；改了 `WINDOW_SIZE` 的話，`app/index.html` 上傳按鈕的提示也要改。「刪除」會把目前這張從資料夾真的刪掉（要按兩次確認），刪完顯示下一張。選過的那張記在視窗的設定資料夾裏
@@ -285,7 +285,7 @@ python scripts/app.py
 
 - 黑色視窗要一直開着，關掉就連不上；電腦也要開着（用的是這部的顯卡）。`Freminet Chat.exe` 開着時要先關掉，兩個都用 5000 埠
 - `share.py` 做的事：開 Ollama（用本地模型時）→ 跑 `app.py --share` → 開 `ngrok http 5000` → 從 ngrok 的 `http://127.0.0.1:4040/api/tunnels` 拿網址。預熱完才給連結，朋友第一則訊息不會特別慢
-- ngrok 要登入一次：token 存在 `%LOCALAPPDATA%\ngrok\ngrok.yml`（這部已經有）；沒有的話 `share.py` 會叫你貼上。免費版每次重開網址都會換，可以在 ngrok 後台領一個免費的固定網域
+- ngrok 用 `C:\ngrok\ngrok.exe`（`share.py` 的 `NGROK`），換電腦要放在同一個位置。要登入一次：token 存在 `%LOCALAPPDATA%\ngrok\ngrok.yml`（這部已經有）；沒有的話 `share.py` 會叫你貼上。免費版每次重開網址都會換，可以在 ngrok 後台領一個免費的固定網域
 - `--share` 和 exe（`--window`）的分別：不開視窗；朋友關掉網頁不會關伺服器；`/api/open` 不能用（不讓別人在這部電腦開視窗）
 - **名字**：第一次打開問名字，記在朋友瀏覽器的 `localStorage`，之後不用再輸入；每個請求用 `X-User` 標頭帶着。同一個名字換手機也能接着聊，新名字從頭開始；右上角人形圖示可以換名字。系統提示會寫「對方叫…」。名字去掉 `\/:*?"<>|`，最多 20 字。exe 不問名字，照舊用 `chats/freminet.json`
 - 一次只處理一則訊息（只有一張顯卡），幾個人同時傳要排隊

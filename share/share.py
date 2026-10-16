@@ -1,19 +1,17 @@
 """Share the chat with friends through ngrok: run 分享給朋友.bat and send them the link it prints.
 
 Starts Ollama if needed, then app.py --share (no window, stays up while this
-window is open), then an ngrok tunnel to port 5000. ngrok.exe is downloaded
-into this folder the first time. The link is copied to the clipboard.
+window is open), then an ngrok tunnel to port 5000 with the ngrok.exe at NGROK.
+The link is copied to the clipboard.
 Closing this window stops everything it started.
 """
 
-import io
 import json
 import os
 import subprocess
 import sys
 import time
 import urllib.request
-import zipfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -21,8 +19,7 @@ PROJECT = HERE.parent
 BUNDLED_PYTHON = PROJECT / "GPT-SoVITS" / "runtime" / "python.exe"
 BUNDLED_OLLAMA = PROJECT / "ollama" / "ollama.exe"
 PYTHON = str(BUNDLED_PYTHON) if BUNDLED_PYTHON.is_file() else sys.executable
-NGROK = HERE / "ngrok.exe"
-NGROK_ZIP = "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip"
+NGROK = Path(r"C:\ngrok\ngrok.exe")
 APP_URL = "http://127.0.0.1:5000"
 
 
@@ -39,15 +36,6 @@ def ready():
         return json.load(urllib.request.urlopen(f"{APP_URL}/api/ready", timeout=2))["ready"]
     except OSError:
         return False
-
-
-def get_ngrok():
-    if NGROK.is_file():
-        return
-    print("第一次使用，下載 ngrok…")
-    data = urllib.request.urlopen(NGROK_ZIP, timeout=120).read()
-    with zipfile.ZipFile(io.BytesIO(data)) as z:
-        NGROK.write_bytes(z.read("ngrok.exe"))
 
 
 def has_token():
@@ -75,7 +63,9 @@ def main():
     if up(f"{APP_URL}/api/ready"):
         print("聊天程式已經開着（Freminet Chat.exe）。請先關掉那個視窗，再重新打開這個。")
         return
-    get_ngrok()
+    if not NGROK.is_file():
+        print(f"找不到 {NGROK}，請把 ngrok.exe 放在那裏")
+        return
     if not has_token():
         print("ngrok 還沒登入。到 https://dashboard.ngrok.com/get-started/your-authtoken 複製 token，然後在這裏貼上：")
         token = input("> ").strip()
