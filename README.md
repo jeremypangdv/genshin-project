@@ -288,6 +288,7 @@ python scripts/app.py
 - ngrok 用 `C:\ngrok\ngrok.exe`（`share.py` 的 `NGROK`），換電腦要放在同一個位置。要登入一次：token 存在 `%LOCALAPPDATA%\ngrok\ngrok.yml`（這部已經有）；沒有的話 `share.py` 會叫你貼上。免費版每次重開網址都會換，可以在 ngrok 後台領一個免費的固定網域
 - `--share` 和 exe（`--window`）的分別：不開視窗；朋友關掉網頁不會關伺服器；`/api/open` 不能用（不讓別人在這部電腦開視窗）
 - **名字**：第一次打開問名字，記在朋友瀏覽器的 `localStorage`，之後不用再輸入；每個請求用 `X-User` 標頭帶着。同一個名字換手機也能接着聊，新名字從頭開始；右上角人形圖示可以換名字。系統提示會寫「對方叫…」。名字去掉 `\/:*?"<>|`，最多 20 字。exe 不問名字，照舊用 `chats/freminet.json`
+- **聊天背景**：`freminet profile/Background/` 的圖大家都看得到，但不能刪。朋友上傳的存在 `chats/backgrounds/freminet@<名字>/`，只有自己看得到、能刪（介面顯示「（我上傳的）」）。列表裏自己上傳的名字前面加 `*`（Windows 檔名不能有 `*`，不會撞名）；圖片網址帶不了標頭，所以用 `?u=名字`。上傳最大 20MB
 - 一次只處理一則訊息（只有一張顯卡），幾個人同時傳要排隊
 - **手機版面**（`app/index.html`，只在 760px 以下或觸控螢幕生效，exe 的 860px 視窗不受影響）：用 `visualViewport` 算高度（`--app-h`），鍵盤彈出時輸入欄不會被蓋住；iPhone 瀏海和底部橫條留位（`env(safe-area-inset-*)`）；輸入欄 16px，點下去 iPhone 不會放大；不跟着滑鼠、不自動彈鍵盤；背景面板可以左右滑
 

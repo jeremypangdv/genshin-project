@@ -93,6 +93,8 @@ IMAGE_TYPES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 UPLOAD_FORMATS = {"JPEG", "PNG"}
 
 app = Flask(__name__, static_folder=None)
+if SHARE:
+    app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # 朋友上傳的背景最大 20MB
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
 info = json.loads((tts.MODEL_DIR / "model.json").read_text(encoding="utf-8"))
 voice = {"state": "loading", "proc": None}
@@ -299,7 +301,9 @@ def user_name():
     """The name the friend typed in (sent in the X-User header); only used when sharing."""
     if not SHARE:
         return None
-    name = re.sub(r'[\/:*?"<>|\x00-\x1f]', "", unquote(request.headers.get("X-User", ""))).strip(" .")[:20]
+    # 圖片網址帶不了標頭，用 ?u=名字
+    raw = unquote(request.headers["X-User"]) if "X-User" in request.headers else request.args.get("u", "")
+    name = re.sub(r'[\/:*?"<>|\x00-\x1f]', "", raw).strip(" .")[:20]
     if not name:
         abort(400)
     return name
@@ -719,17 +723,38 @@ def background_dir(friend):
     return PROJECT / FRIENDS[friend]["backgrounds"]
 
 
-@app.get("/api/backgrounds/<friend>")
-def list_backgrounds(friend):
-    folder = background_dir(friend)
+# 分享時：資料夾裏的圖大家都看得到但不能刪；朋友上傳的放在自己的資料夾，只有自己看得到、能刪。
+# 自己上傳的圖名字前面加 *（Windows 檔名不能有 *，不會和資料夾裏的撞名）
+MINE = "*"
+
+
+def own_background_dir(friend):
+    return CHAT_DIR / "backgrounds" / chat_key(friend, user_name())
+
+
+def background_file(friend, name):
+    if SHARE and name.startswith(MINE):
+        return own_background_dir(friend) / Path(name[1:]).name
+    return background_dir(friend) / Path(name).name
+
+
+def images(folder):
     files = [f for f in folder.glob("*") if f.suffix.lower() in IMAGE_TYPES] if folder.is_dir() else []
     # 舊的在前，新上傳的排在最後
-    return jsonify([f.name for f in sorted(files, key=lambda f: f.stat().st_mtime)])
+    return [f.name for f in sorted(files, key=lambda f: f.stat().st_mtime)]
+
+
+@app.get("/api/backgrounds/<friend>")
+def list_backgrounds(friend):
+    names = images(background_dir(friend))
+    if SHARE:
+        names += [MINE + n for n in images(own_background_dir(friend))]
+    return jsonify(names)
 
 
 @app.post("/api/backgrounds/<friend>")
 def upload_background(friend):
-    folder = background_dir(friend)
+    folder = own_background_dir(friend) if SHARE else background_dir(friend)
     file = request.files.get("file")
     name = Path(file.filename or "").name if file else ""
     if not name or Path(name).suffix.lower() not in {".jpg", ".jpeg", ".png"}:
@@ -751,12 +776,14 @@ def upload_background(friend):
     while target.exists():
         target, n = folder / f"{Path(name).stem} ({n}){Path(name).suffix}", n + 1
     file.save(target)
-    return jsonify(name=target.name)
+    return jsonify(name=(MINE if SHARE else "") + target.name)
 
 
 @app.delete("/api/backgrounds/<friend>/<name>")
 def delete_background(friend, name):
-    target = background_dir(friend) / Path(name).name
+    if SHARE and not name.startswith(MINE):
+        return jsonify(error="只能刪除自己上傳的圖"), 403
+    target = background_file(friend, name)
     if target.suffix.lower() not in IMAGE_TYPES or not target.is_file():
         return jsonify(error="找不到這張圖"), 404
     target.unlink()
@@ -765,7 +792,8 @@ def delete_background(friend, name):
 
 @app.get("/backgrounds/<friend>/<name>")
 def background(friend, name):
-    return send_from_directory(background_dir(friend), name)
+    target = background_file(friend, name)
+    return send_from_directory(target.parent, target.name)
 
 
 @app.get("/audio/<name>")

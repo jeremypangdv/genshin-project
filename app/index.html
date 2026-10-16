@@ -321,20 +321,24 @@ async function setupBackgrounds(main, friend) {
   const box = $(".messages", main), panel = $(".bg-panel", main), thumb = $(".bg-thumb", panel);
   const dl = $("[data-bg=download]", panel), del = $("[data-bg=delete]", panel), file = $("input[type=file]", panel);
   const key = `background:${friend.id}`;
-  const url = name => `/backgrounds/${friend.id}/${encodeURIComponent(name)}`;
+  // 分享時自己上傳的圖名字前面有 *：只有自己看得到、能刪；圖片網址帶不了標頭，所以名字放在 ?u=
+  const mine = name => name.startsWith("*");
+  const url = name => `/backgrounds/${friend.id}/${encodeURIComponent(name)}` +
+    (mine(name) ? `?u=${encodeURIComponent(userName)}` : "");
   let list = [], i = 0, shown = 0;
 
   const show = () => {
-    const name = list[i];
-    $(".bg-name", panel).textContent = name || "資料夾裏沒有圖片";
+    const name = list[i], plain = name && name.replace(/^\*/, "");
+    $(".bg-name", panel).textContent = !name ? "資料夾裏沒有圖片" : mine(name) ? `${plain}（我上傳的）` : plain;
     $(".bg-name", panel).title = "";
     $(".bg-count", panel).textContent = name ? `${i + 1} / ${list.length}` : "";
     dl.setAttribute("aria-disabled", !name);
-    del.setAttribute("aria-disabled", !name);
+    // 分享時只能刪自己上傳的
+    del.setAttribute("aria-disabled", !name || (state.askName && !mine(name)));
     unconfirm();
     if (!name) { box.classList.remove("photo"); thumb.style.backgroundImage = ""; return; }
     dl.href = url(name);
-    dl.download = name;
+    dl.download = plain;
     try { localStorage.setItem(key, name); } catch {}
     // 等圖載好才換，快速滾動時不會閃回底色；只換成最後選的那張
     const n = ++shown, img = new Image();
@@ -386,7 +390,7 @@ async function setupBackgrounds(main, friend) {
       return;
     }
     try {
-      const res = await fetch(`/api/backgrounds/${friend.id}/${encodeURIComponent(name)}`, { method: "DELETE" });
+      const res = await fetch(`/api/backgrounds/${friend.id}/${encodeURIComponent(name)}`, { method: "DELETE", headers: who() });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       // 刪掉後顯示原本的下一張
@@ -405,7 +409,7 @@ async function setupBackgrounds(main, friend) {
       const body = new FormData();
       body.append("file", f);
       try {
-        const res = await fetch(`/api/backgrounds/${friend.id}`, { method: "POST", body });
+        const res = await fetch(`/api/backgrounds/${friend.id}`, { method: "POST", body, headers: who() });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
         last = data.name;
@@ -547,8 +551,10 @@ function askName(changing = false) {
   });
 }
 
+const who = () => ({ "X-User": encodeURIComponent(userName) });
+
 async function api(path, opts = {}) {
-  const headers = { "Content-Type": "application/json", "X-User": encodeURIComponent(userName) };
+  const headers = { "Content-Type": "application/json", ...who() };
   const res = await fetch(path, { headers, ...opts });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
