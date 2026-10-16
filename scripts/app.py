@@ -20,6 +20,7 @@ import threading
 import time
 import webbrowser
 from pathlib import Path
+from urllib.parse import unquote
 
 from PIL import Image, UnidentifiedImageError
 from flask import Flask, abort, jsonify, request, send_from_directory
@@ -32,6 +33,7 @@ import tts  # noqa: E402
 PROJECT = tts.PROJECT
 APP_DIR = PROJECT / "app"
 CHAT_DIR = PROJECT / "chats"
+SHARE = "--share" in sys.argv  # share/share.py 開的：朋友從 ngrok 連進來，每個人用名字分開聊天記錄
 CHARACTER_DIR = PROJECT / "characters"
 MAX_FACTS = 400  # 對方的資料超過這麼多字，系統提示只放和這則訊息最相關的（全部還是存着）
 RELATED = 0.5  # 新舊兩條資料的 embedding 相似度到這個（「麵包店打工」和「現在在咖啡店上班」約 0.55），才問 8b 新的有沒有取代舊的
@@ -185,9 +187,9 @@ def lore_for(friend, messages):
     return []
 
 
-def system_prompt(friend, memory=None, style=None, recall=None, lore=None):
+def system_prompt(friend, memory=None, style=None, recall=None, lore=None, name=None):
     """recall is what look_up() found when the message asks whether he remembers something;
-    lore is the detailed sections from lore_for()."""
+    lore is the detailed sections from lore_for(); name is what the other person typed in when sharing."""
     persona = (CHARACTER_DIR / f"{friend}.md").read_text(encoding="utf-8")
     if lore:
         persona += ("\n\n# 和這次話題有關的詳細回憶（只有你自己知道的經歷。按現在和對方的熟悉程度，自然地挑一點說，"
@@ -205,6 +207,9 @@ def system_prompt(friend, memory=None, style=None, recall=None, lore=None):
 - 用繁體中文、口語。這是語音訊息，要像平常講話一樣短：通常一兩句、三十字左右，問什麼答什麼就好。
 - 不用每次都補充自己的事，也不用每次都反問對方，大部分回覆說完就停。
 - 不要提到自己是 AI 或語言模型。""" + (f"""
+
+## 對方的名字
+對方叫「{name}」。不用每次都叫名字。""" if name else "") + (f"""
 
 ## 對方的資料（對方以前親口告訴你的，越後面越新，前後不一樣的以後面為準）
 {facts}""" if facts else "") + (f"""
@@ -290,28 +295,43 @@ def shorten(reply):
     return out.strip()
 
 
-def chat_path(friend):
-    return CHAT_DIR / f"{friend}.json"
+def user_name():
+    """The name the friend typed in (sent in the X-User header); only used when sharing."""
+    if not SHARE:
+        return None
+    name = re.sub(r'[\/:*?"<>|\x00-\x1f]', "", unquote(request.headers.get("X-User", ""))).strip(" .")[:20]
+    if not name:
+        abort(400)
+    return name
 
 
-def load_chat(friend):
-    path = chat_path(friend)
+def chat_key(friend, name):
+    """Where a chat is saved: friend alone on this computer, friend@name for each friend when sharing."""
+    return f"{friend}@{name}" if name else friend
+
+
+def chat_path(key):
+    return CHAT_DIR / f"{key}.json"
+
+
+def load_chat(key):
+    path = chat_path(key)
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
 
 
-def save_chat(friend, messages):
+def save_chat(key, messages):
     CHAT_DIR.mkdir(exist_ok=True)
-    chat_path(friend).write_text(json.dumps(messages, ensure_ascii=False, indent=1), encoding="utf-8")
+    chat_path(key).write_text(json.dumps(messages, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
 # 舊對話的記憶：facts 是對方說過自己的事（名字、寵物、生日…），只加不刪；
 # summary 概括了聊天記錄裏 upto 之前聊過的話題，舊的會慢慢被擠掉；upto 之後的才原文傳給 LLM
-def memory_path(friend):
-    return CHAT_DIR / f"{friend}.memory.json"
+def memory_path(key):
+    return CHAT_DIR / f"{key}.memory.json"
 
 
-def load_memory(friend):
-    path = memory_path(friend)
+def load_memory(key):
+    path = memory_path(key)
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"facts": "", "summary": "", "upto": 0}
 
 
@@ -328,7 +348,7 @@ def next_user(messages, i):
     return i
 
 
-def summarize(friend):
+def summarize(key):
     """Fold old messages into the memory once there are more than history_turns of them.
 
     It cuts back to half in one go instead of dropping one turn per message, so
@@ -337,8 +357,8 @@ def summarize(friend):
     they were mixed in, the model dropped them as "old" after a few rounds.
     """
     turns = history_turns()
-    messages = load_chat(friend)
-    memory = {"facts": "", **load_memory(friend)}
+    messages = load_chat(key)
+    memory = {"facts": "", **load_memory(key)}
     if len(messages) - memory["upto"] <= turns * 2:
         return
     cut = next_user(messages, len(messages) - turns // 2 * 2)
@@ -360,7 +380,7 @@ def summarize(friend):
     except RuntimeError as e:
         print(f"整理摘要失敗：{e}")
         return
-    memory_path(friend).write_text(json.dumps({"facts": facts, "summary": summary or memory["summary"], "upto": cut},
+    memory_path(key).write_text(json.dumps({"facts": facts, "summary": summary or memory["summary"], "upto": cut},
                                               ensure_ascii=False, indent=1), encoding="utf-8")
 
 
@@ -533,19 +553,19 @@ def similar(a, b):
     return bool(pa and pb) and len(pa & pb) / min(len(pa), len(pb)) > 0.5
 
 
-def reply_to(friend, messages, text):
+def reply_to(friend, messages, text, name=None):
     """(raw, emotion, reply) for the last message; retried up to 3 times when it slips into English,
     or says it forgot when it shouldn't (or doesn't when look_up found nothing).
 
     Retrying replies that repeat an earlier one was tried too (2026-10-10): 8b
     wrote the same sentence pattern again every time, so it only made replies slower.
     """
-    memory = load_memory(friend)
+    memory = load_memory(chat_key(friend, name))
     # 還沒整理進資料的最近幾則：只給陳述句，問過的「你記得…嗎」會讓 8b 搞混
     said = [m["text"] for m in messages[history_start(messages, memory):-1]
             if m["role"] == "user" and not QUESTION.search(m["text"])]
     recall = look_up(text, memory, said)
-    history = llm_messages(friend, messages, recall=recall)
+    history = llm_messages(friend, messages, recall=recall, name=name)
     for _ in range(3):
         raw = llm.chat(history)
         emotion, reply = parse_reply(raw)
@@ -577,11 +597,11 @@ def history_start(messages, memory):
     return next_user(messages, max(memory["upto"], len(messages) - history_turns() * 4))
 
 
-def llm_messages(friend, messages, style=None, recall=None):
-    memory = load_memory(friend)
+def llm_messages(friend, messages, style=None, recall=None, name=None):
+    memory = load_memory(chat_key(friend, name))
     if messages and messages[-1]["role"] == "user":
         memory = {**memory, "facts": relevant_facts(memory.get("facts", ""), messages[-1]["text"])}
-    out = [{"role": "system", "content": system_prompt(friend, memory, style, recall, lore_for(friend, messages))}]
+    out = [{"role": "system", "content": system_prompt(friend, memory, style, recall, lore_for(friend, messages), name)}]
     for m in messages[history_start(messages, memory):]:
         if m["role"] == "user":
             out.append({"role": "user", "content": m["text"]})
@@ -608,32 +628,34 @@ def ready():
 
 @app.get("/api/status")
 def status():
-    return jsonify(voice=voice["state"], llm=llm.describe())
+    return jsonify(voice=voice["state"], llm=llm.describe(), ask_name=SHARE)
 
 
 @app.get("/api/friends")
 def friends():
-    return jsonify([{"id": k, **v, "last": (load_chat(k) or [None])[-1]} for k, v in FRIENDS.items()])
+    name = user_name()
+    return jsonify([{"id": k, **v, "last": (load_chat(chat_key(k, name)) or [None])[-1]} for k, v in FRIENDS.items()])
 
 
 @app.get("/api/chats/<friend>")
 def get_chat(friend):
     if friend not in FRIENDS:
         abort(404)
-    return jsonify(load_chat(friend))
+    return jsonify(load_chat(chat_key(friend, user_name())))
 
 
 @app.delete("/api/chats/<friend>")
 def clear_chat(friend):
     if friend not in FRIENDS:
         abort(404)
+    key = chat_key(friend, user_name())
     with lock:
         # 語音檔也一起刪，清空後畫面上已經找不到它們
-        for msg in load_chat(friend):
+        for msg in load_chat(key):
             if msg.get("audio"):
                 (tts.OUTPUT_DIR / Path(msg["audio"]).name).unlink(missing_ok=True)
-        chat_path(friend).unlink(missing_ok=True)
-        memory_path(friend).unlink(missing_ok=True)
+        chat_path(key).unlink(missing_ok=True)
+        memory_path(key).unlink(missing_ok=True)
     return jsonify(ok=True)
 
 
@@ -644,12 +666,14 @@ def send(friend):
     text = (request.json or {}).get("text", "").strip()
     if not text:
         abort(400)
+    name = user_name()
+    key = chat_key(friend, name)
     with lock:
-        messages = load_chat(friend)
+        messages = load_chat(key)
         messages.append({"role": "user", "text": text, "time": time.time()})
-        save_chat(friend, messages)
+        save_chat(key, messages)
         try:
-            raw, emotion, reply = reply_to(friend, messages, text)
+            raw, emotion, reply = reply_to(friend, messages, text, name)
         except RuntimeError as e:
             return jsonify(error=str(e)), 502
         if not reply:
@@ -666,9 +690,9 @@ def send(friend):
             msg["voice_error"] = "語音模型還沒載入" if voice["state"] == "loading" else "語音模型載入失敗"
         messages.append(msg)
         drop_old_voices(messages)
-        save_chat(friend, messages)
+        save_chat(key, messages)
     # 回覆先送出去，摘要在背景整理；下一則訊息會等它完成（lock）
-    threading.Thread(target=locked_summarize, args=(friend,), daemon=True).start()
+    threading.Thread(target=locked_summarize, args=(key,), daemon=True).start()
     return jsonify(msg)
 
 
@@ -679,9 +703,9 @@ def drop_old_voices(messages):
         (tts.OUTPUT_DIR / Path(m.pop("audio")).name).unlink(missing_ok=True)
 
 
-def locked_summarize(friend):
+def locked_summarize(key):
     with lock:
-        summarize(friend)
+        summarize(key)
 
 
 @app.get("/avatars/<name>")
@@ -804,7 +828,9 @@ def bye():
 
 @app.post("/api/open")
 def open_again():
-    # 已經在跑時再雙擊 exe，就多開一個視窗
+    # 已經在跑時再雙擊 exe，就多開一個視窗；分享模式下網址在外面，不讓別人在這部電腦開視窗
+    if SHARE:
+        abort(403)
     open_window()
     return jsonify(ok=True)
 
@@ -829,6 +855,9 @@ if __name__ == "__main__":
         threading.Thread(target=start, daemon=True).start()
         threading.Thread(target=watch_window, daemon=True).start()
         threading.Timer(0.5, open_window).start()
+    elif SHARE:
+        # share/ 用的：朋友從 ngrok 連進來，不開視窗，也不因為朋友關掉網頁就關伺服器
+        threading.Thread(target=start, daemon=True).start()
     else:
         start()
         threading.Timer(1, webbrowser.open, ["http://127.0.0.1:5000"]).start()

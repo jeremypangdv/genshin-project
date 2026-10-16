@@ -16,3 +16,6 @@ app.log
 
 # scripts/make_bundle.py 做出來的（給朋友的資料夾）
 dist/
+
+# share/share.py 第一次用時下載的
+share/ngrok.exe

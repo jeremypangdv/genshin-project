@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Genshin Chat</title>
 <link rel="icon" href="/avatars/freminet.jpg">
 <style>
@@ -22,14 +22,15 @@
   html { cursor: var(--cur-normal); }
   a[href], button:not(:disabled), label { cursor: var(--cur-click); }
   input, textarea, [contenteditable] { cursor: var(--cur-text); }
-  html, body { height: 100%; margin: 0; }
+  html, body { height: 100%; margin: 0; overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
   body {
     background: var(--bg); color: var(--text);
     font: 14.5px/1.4 "Segoe UI", "Microsoft JhengHei", "PingFang TC", sans-serif;
     display: flex; justify-content: center; align-items: center;
   }
   .app {
-    width: 100vw; height: 100vh;
+    /* 手機上 100vh 會比畫面高（網址列、鍵盤），--app-h 由下面的 script 用 visualViewport 算 */
+    width: 100%; height: 100vh; height: var(--app-h, 100dvh);
     display: grid; grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr);
     background: var(--panel); overflow: hidden;
   }
@@ -57,7 +58,8 @@
 
   /* 右邊聊天 */
   .main { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--wall); }
-  .chat-head { height: 60px; padding: 0 16px; display: flex; align-items: center; gap: 12px; background: var(--panel-2); border-left: 1px solid var(--line); }
+  /* env(safe-area-inset-*)：iPhone 的瀏海和底部橫條，不要蓋到按鈕 */
+  .chat-head { height: calc(60px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)); display: flex; align-items: center; gap: 12px; background: var(--panel-2); border-left: 1px solid var(--line); }
   .chat-head .who { flex: 1; min-width: 0; }
   .chat-head .name { font-size: 16px; }
   .chat-head .status { font-size: 13px; color: var(--muted); }
@@ -151,7 +153,8 @@
     100% { transform: translate(var(--dx), -140px) scale(1); opacity: 0; }
   }
 
-  .compose { position: relative; z-index: 2; min-height: 62px; padding: 10px 16px; display: flex; align-items: center; gap: 10px; background: var(--panel-2); }
+  .compose { position: relative; z-index: 2; min-height: 62px;
+    padding: 10px max(16px, env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); display: flex; align-items: center; gap: 10px; background: var(--panel-2); }
   .compose input { flex: 1; border: 0; border-radius: 8px; padding: 11px 14px; font: inherit; font-size: 15px; outline: none; background: #fff; }
   .send { width: 42px; height: 42px; border: 0; border-radius: 50%; background: var(--accent); color: #fff; cursor: var(--cur-click); display: grid; place-items: center; }
   .send:disabled { background: #b3c5bf; cursor: var(--cur-normal); }
@@ -160,11 +163,35 @@
   .empty h2 { color: #41525d; font-weight: 300; font-size: 30px; margin: 0 0 10px; }
 
   @media (max-width: 760px) {
-    .app { grid-template-columns: 1fr; height: 100vh; }
     .app.open .side { display: none; }
     .app:not(.open) .main { display: none; }
-    .messages { padding: 16px; }
+    .messages { padding: 12px max(10px, env(safe-area-inset-right)) 12px max(10px, env(safe-area-inset-left)); }
     .msg { max-width: 85%; }
+    .voice { width: 300px; }
+    .chat-head { gap: 6px; padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(6px, env(safe-area-inset-right)); }
+    .compose { gap: 8px; padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)); }
+    /* iPhone 輸入欄字小於 16px 時，點下去整頁會放大 */
+    .compose input { font-size: 16px; min-width: 0; }
+    .send { flex: none; }
+    .bg-panel { right: 8px; width: min(290px, calc(100% - 16px)); top: calc(64px + env(safe-area-inset-top)); }
+    .peek { width: 140px; bottom: -21px; }
+  }
+  /* 分享時第一次打開，問對方的名字 */
+  .ask-name { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px; background: rgba(11,20,26,.45); }
+  .ask-name[hidden] { display: none; }
+  .ask-name form { width: min(340px, 100%); background: #fff; border-radius: 14px; padding: 22px 20px 18px; text-align: center;
+    box-shadow: 0 8px 28px rgba(11,20,26,.3); }
+  .ask-name p { margin: 0 0 4px; font-size: 16px; }
+  .ask-name small { display: block; color: var(--muted); margin-bottom: 14px; }
+  .ask-name input { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 11px 12px; font: inherit; font-size: 16px; outline: none; background: var(--panel-2); }
+  .ask-name button { width: 100%; margin-top: 12px; padding: 11px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font: inherit; font-size: 15px; }
+  .ask-name button:disabled { background: #b3c5bf; }
+  .ask-name .cancel { background: none; color: var(--muted); margin-top: 4px; }
+  .ask-name .cancel[hidden], .icon-btn[hidden] { display: none; }
+  /* 觸控螢幕：沒有滑鼠，按過的按鈕不要一直停在 hover 的顏色 */
+  @media (hover: none) {
+    html { -webkit-tap-highlight-color: transparent; }
+    .icon-btn:hover, .voice .play:hover, .voice .dl:hover, .bg-pick button:hover { background: none; }
   }
   .back { display: none; }
   /* 只顯示聊天，好友列表不放出來 */
@@ -185,6 +212,16 @@
   </main>
 </div>
 
+<div class="ask-name" hidden>
+  <form>
+    <p>你叫什麼名字？</p>
+    <small>用同一個名字，換手機或電腦也能接着聊</small>
+    <input maxlength="20" placeholder="名字" autocomplete="nickname" enterkeyhint="done">
+    <button class="ok" disabled>開始聊天</button>
+    <button class="cancel" type="button" hidden>取消</button>
+  </form>
+</div>
+
 <template id="chat-tpl">
   <div class="chat-head">
     <button class="icon-btn back" data-act="back" title="返回">
@@ -192,6 +229,9 @@
     </button>
     <div class="avatar small"></div>
     <div class="who"><div class="name"></div><div class="status"></div></div>
+    <button class="icon-btn" data-act="name" title="換名字" hidden>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+    </button>
     <button class="icon-btn" data-act="settings" title="聊天背景">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94a7.07 7.07 0 0 0 0-1.88l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96a7.03 7.03 0 0 0-1.62-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.5.5 0 0 0-.61.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58a7.07 7.07 0 0 0 0 1.88l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.3.61.22l2.39-.96c.49.38 1.03.7 1.62.94l.36 2.54c.05.24.25.42.5.42h3.84c.25 0 .45-.18.5-.42l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.48 0 .61-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.6a3.6 3.6 0 1 1 0-7.2 3.6 3.6 0 0 1 0 7.2z"/></svg>
     </button>
@@ -218,12 +258,12 @@
       <input type="file" accept=".jpg,.jpeg,.png" multiple hidden>
       <button class="bg-btn danger" data-bg="delete" title="從資料夾刪除這張圖">刪除</button>
     </div>
-    <div class="bg-hint">在這裏滾動滑鼠滾輪可以快速切換</div>
+    <div class="bg-hint">在這裏滾動滑鼠滾輪（手機左右滑）可以快速切換</div>
   </div>
   <div class="messages"></div>
   <div class="peek-zone"><div class="hole"></div></div>
   <form class="compose">
-    <input placeholder="輸入訊息" autocomplete="off">
+    <input placeholder="輸入訊息" autocomplete="off" enterkeyhint="send">
     <button class="send" title="傳送">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>
     </button>
@@ -238,6 +278,8 @@ const ICON_SHOW = '<svg width="20" height="20" viewBox="0 0 24 24" fill="current
 const EMOTIONS = { calm: "平靜", happy: "開心", gentle: "溫柔", sad: "難過", shy: "害羞",
   surprised: "驚訝", serious: "嚴肅", angry: "生氣", urgent: "緊急" };
 const BARS = 36;
+// 手機、平板：沒有滑鼠
+const TOUCH = matchMedia("(hover: none)").matches;
 
 const state = { friends: [], current: null, busy: false, voice: "loading", playing: null };
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -326,6 +368,13 @@ async function setupBackgrounds(main, friend) {
     acc += e.deltaY;
     while (Math.abs(acc) >= 50) { go(Math.sign(acc)); acc -= 50 * Math.sign(acc); }
   }, { passive: false });
+  let touchX = null;
+  panel.addEventListener("touchstart", e => { touchX = e.touches[0].clientX; }, { passive: true });
+  panel.addEventListener("touchend", e => {
+    const dx = e.changedTouches[0].clientX - touchX;
+    if (touchX !== null && Math.abs(dx) > 40) go(dx < 0 ? 1 : -1);
+    touchX = null;
+  });
   $("[data-bg=upload]", panel).onclick = () => file.click();
   del.onclick = async () => {
     const name = list[i];
@@ -414,7 +463,7 @@ function startPeek(hole, friend) {
 // 小菲米尼跟在滑鼠右下角，慢半拍追上去；滑鼠離開視窗就淡出
 // 指着可以點的東西換 cursor_click，指着輸入欄換 cursor_text；那兩張不在就一直用 cursor
 function startBuddy(friend) {
-  if (!friend.cursor || $(".buddy")) return;
+  if (!friend.cursor || $(".buddy") || TOUCH) return;
   const img = new Image();
   img.className = "buddy";
   img.alt = "";
@@ -471,8 +520,36 @@ function hearts(zone, x, friend) {
   }
 }
 
+// 分享時用名字分開每個人的聊天記錄；名字記在瀏覽器裏，下次打開不用再輸入
+let userName = "";
+try { userName = localStorage.getItem("name") || ""; } catch {}
+
+// changing：從聊天畫面按「換名字」打開的，可以取消；回傳有沒有換
+function askName(changing = false) {
+  const box = $(".ask-name"), form = $("form", box), input = $("input", box), btn = $(".ok", box), cancel = $(".cancel", box);
+  box.hidden = false;
+  input.value = changing ? userName : "";
+  btn.textContent = changing ? "換名字" : "開始聊天";
+  cancel.hidden = !changing;
+  input.oninput = () => { btn.disabled = !input.value.trim() || input.value.trim() === userName; };
+  input.oninput();
+  input.focus();
+  return new Promise(done => {
+    cancel.onclick = () => { box.hidden = true; done(false); };
+    form.onsubmit = e => {
+      e.preventDefault();
+      userName = input.value.trim().slice(0, 20);
+      if (!userName) return;
+      try { localStorage.setItem("name", userName); } catch {}
+      box.hidden = true;
+      done(true);
+    };
+  });
+}
+
 async function api(path, opts = {}) {
-  const res = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
+  const headers = { "Content-Type": "application/json", "X-User": encodeURIComponent(userName) };
+  const res = await fetch(path, { headers, ...opts });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
@@ -536,6 +613,14 @@ async function openChat(friend) {
   updateHeader();
   renderFriends();
 
+  // 分享時才有名字：換了就打開那個名字的聊天記錄
+  const nameBtn = $("[data-act=name]", main);
+  nameBtn.hidden = !state.askName;
+  nameBtn.onclick = async () => {
+    if (state.busy || !await askName(true)) return;
+    await loadFriends();
+    openChat(state.friends.find(f => f.id === friend.id) || friend);
+  };
   $("[data-act=back]", main).onclick = () => { $("#app").classList.remove("open"); stopPlaying(); };
   const view = $("[data-act=view]", main);
   const syncView = () => {
@@ -557,7 +642,9 @@ async function openChat(friend) {
   form.onsubmit = e => { e.preventDefault(); send(input.value); };
   input.oninput = () => syncSend();
   syncSend();
-  input.focus();
+  if (!TOUCH) input.focus();
+  // 鍵盤彈出來畫面變矮，捲回最下面才看得到最新的訊息
+  input.addEventListener("focus", () => setTimeout(scrollDown, 300));
 
   const messages = await api(`/api/chats/${friend.id}`);
   messages.forEach(addMessage);
@@ -692,10 +779,27 @@ async function send(text) {
   }
 }
 
+// 手機的網址列和鍵盤會改變看得到的高度，聊天畫面跟着縮放，輸入欄不會被鍵盤蓋住
+if (window.visualViewport) {
+  const fit = () => {
+    const vv = visualViewport;
+    // 用雙指放大時 height 也會變小，那不是鍵盤，所以乘回 scale
+    document.documentElement.style.setProperty("--app-h", `${vv.height * vv.scale}px`);
+    if (vv.scale <= 1.01) scrollTo(0, 0);
+  };
+  visualViewport.addEventListener("resize", fit);
+  fit();
+}
 $("#search").oninput = renderFriends;
 refreshStatus();
-// 沒有好友列表，直接打開第一個好友的聊天
-loadFriends().then(() => state.friends[0] && openChat(state.friends[0]));
+(async () => {
+  const s = await api("/api/status").catch(() => ({}));
+  state.askName = !!s.ask_name;
+  if (state.askName && !userName) await askName();
+  // 沒有好友列表，直接打開第一個好友的聊天
+  await loadFriends();
+  if (state.friends[0]) openChat(state.friends[0]);
+})();
 // 用 exe 開的視窗：開着時定時告訴伺服器，關掉時說再見，伺服器才知道要不要關
 addEventListener("pagehide", () => navigator.sendBeacon("/api/bye"));
 setInterval(() => fetch("/api/ping").catch(() => {}), 20000);
