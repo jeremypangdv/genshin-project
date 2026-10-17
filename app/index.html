@@ -133,6 +133,17 @@
   .bg-btn.danger.confirm { background: var(--error); color: #fff; }
   .bg-btn[aria-disabled=true] { opacity: .4; pointer-events: none; }
   .bg-hint { font-size: 11.5px; color: var(--muted); text-align: center; margin-top: 8px; }
+  /* 網上模型今天用了幾次，用完變紅 */
+  .usage { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12.5px; }
+  .usage[hidden], .quota[hidden] { display: none; }
+  .usage .row { display: flex; justify-content: space-between; }
+  .usage .bar { height: 6px; margin: 6px 0 4px; border-radius: 3px; background: var(--panel-2); overflow: hidden; }
+  .usage .bar i { display: block; height: 100%; background: var(--accent); }
+  .usage small { color: var(--muted); }
+  .usage.out .count { color: var(--error); font-weight: 600; }
+  .usage.out .bar i { background: var(--error); }
+  .quota { background: var(--error); color: #fff; text-align: center; font-size: 13.5px; padding: 8px 12px; }
+  .compose input:disabled { background: #e4e7ea; }
 
   /* 跟着滑鼠的小菲米尼，不擋點擊 */
   .buddy { position: fixed; left: 0; top: 0; width: 44px; z-index: 50; pointer-events: none;
@@ -259,7 +270,13 @@
       <button class="bg-btn danger" data-bg="delete" title="從資料夾刪除這張圖">刪除</button>
     </div>
     <div class="bg-hint">在這裏滾動滑鼠滾輪（手機左右滑）可以快速切換</div>
+    <div class="usage" hidden>
+      <div class="row"><span>今天的聊天次數</span><span class="count"></span></div>
+      <div class="bar"><i></i></div>
+      <small></small>
+    </div>
   </div>
+  <div class="quota" hidden></div>
   <div class="messages"></div>
   <div class="peek-zone"><div class="hole"></div></div>
   <form class="compose">
@@ -281,7 +298,7 @@ const BARS = 36;
 // 手機、平板：沒有滑鼠
 const TOUCH = matchMedia("(hover: none)").matches;
 
-const state = { friends: [], current: null, busy: false, voice: "loading", playing: null };
+const state = { friends: [], current: null, busy: false, voice: "loading", playing: null, usage: null };
 const $ = (sel, el = document) => el.querySelector(sel);
 
 const pad = n => String(n).padStart(2, "0");
@@ -561,9 +578,47 @@ async function api(path, opts = {}) {
   return data;
 }
 
+// 網上模型的免費次數：設定裏顯示用了幾次，用完了上面跳提示、輸入欄不能打
+const resetLabel = t => {
+  const d = new Date(t * 1000), time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return d.toDateString() === new Date().toDateString() ? `今天 ${time}` : `${d.getMonth() + 1}月${d.getDate()}日 ${time}`;
+};
+const quotaOut = () => !!state.usage && state.usage.used >= state.usage.limit;
+let resetTimer;
+function showUsage(u) {
+  state.usage = u || null;
+  const box = $(".usage"), banner = $(".quota"), out = quotaOut();
+  if (box) {
+    box.hidden = !u;
+    if (u) {
+      box.classList.toggle("out", out);
+      $(".count", box).textContent = `${u.used} / ${u.limit}`;
+      $(".bar i", box).style.width = `${Math.min(100, u.used / u.limit * 100)}%`;
+      $("small", box).textContent = out ? `用完了，${resetLabel(u.reset)} 重置` : `每天 ${resetLabel(u.reset).slice(-5)} 重置`;
+    }
+  }
+  if (banner) {
+    banner.hidden = !out;
+    if (out) banner.textContent = `今天的使用次數已經用完了，請在 ${resetLabel(u.reset)} 之後再來聊天`;
+  }
+  const input = $(".compose input");
+  if (input) {
+    input.disabled = out;
+    input.placeholder = out ? "今天的次數用完了" : "輸入訊息";
+  }
+  syncSend();
+  // 到了重置的時間自己解鎖
+  clearTimeout(resetTimer);
+  if (out) resetTimer = setTimeout(refreshUsage, Math.max(1000, u.reset * 1000 - Date.now() + 2000));
+}
+async function refreshUsage() {
+  try { showUsage((await api("/api/status")).usage); } catch {}
+}
+
 async function refreshStatus() {
   try {
     const s = await api("/api/status");
+    showUsage(s.usage);
     state.voice = s.voice;
     const v = { loading: "語音模型載入中…", ready: "語音就緒", failed: "語音模型載入失敗" }[s.voice];
     $("#engine").textContent = `${s.llm}　·　${v}`;
@@ -647,7 +702,7 @@ async function openChat(friend) {
   const form = $(".compose", main), input = $("input", form);
   form.onsubmit = e => { e.preventDefault(); send(input.value); };
   input.oninput = () => syncSend();
-  syncSend();
+  showUsage(state.usage);
   if (!TOUCH) input.focus();
   // 鍵盤彈出來畫面變矮，捲回最下面才看得到最新的訊息
   input.addEventListener("focus", () => setTimeout(scrollDown, 300));
@@ -659,7 +714,7 @@ async function openChat(friend) {
 
 function syncSend() {
   const input = $(".compose input");
-  if (input) $(".compose .send").disabled = state.busy || !input.value.trim();
+  if (input) $(".compose .send").disabled = state.busy || quotaOut() || !input.value.trim();
 }
 
 let lastDay = null, lastRole = null;
@@ -753,7 +808,7 @@ function scrollDown() { const b = $(".messages"); if (b) b.scrollTop = b.scrollH
 
 async function send(text) {
   text = text.trim();
-  if (!text || state.busy || !state.current) return;
+  if (!text || state.busy || quotaOut() || !state.current) return;
   const friend = state.current;
   const input = $(".compose input");
   input.value = "";
@@ -780,6 +835,7 @@ async function send(text) {
     scrollDown();
   } finally {
     state.busy = false; updateHeader(); syncSend();
+    refreshUsage();
     loadFriends();
     $(".compose input")?.focus();
   }
@@ -809,6 +865,8 @@ refreshStatus();
 // 用 exe 開的視窗：開着時定時告訴伺服器，關掉時說再見，伺服器才知道要不要關
 addEventListener("pagehide", () => navigator.sendBeacon("/api/bye"));
 setInterval(() => fetch("/api/ping").catch(() => {}), 20000);
+// 分享時朋友也在用同一個額度，定時更新
+setInterval(refreshUsage, 60000);
 </script>
 </body>
 </html>

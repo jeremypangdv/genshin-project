@@ -132,10 +132,12 @@ def warm_up():
             voice["state"], voice["proc"] = "failed", None
         if voice["state"] == "ready" and not voice_works():
             voice["state"] = "failed"
-    print(f"預熱 LLM（{llm.load_config()['active']}）…", end="", flush=True)
+    # 用網上的模型時預熱本地的備用模型：網上的不用預熱，也不要浪費免費次數
+    name = llm.local_name()
+    print(f"預熱 LLM（{name}）…", end="", flush=True)
     try:
         # 用真的系統提示，Ollama 會把這段快取起來，第一則訊息就不用重新讀
-        llm.chat(llm_messages("freminet", []) + [{"role": "user", "content": "你好"}])
+        llm.call(name, llm_messages("freminet", []) + [{"role": "user", "content": "你好"}])
         print(" 完成")
     except RuntimeError as e:
         print(f" 失敗：{e}")
@@ -632,7 +634,7 @@ def ready():
 
 @app.get("/api/status")
 def status():
-    return jsonify(voice=voice["state"], llm=llm.describe(), ask_name=SHARE)
+    return jsonify(voice=voice["state"], llm=llm.describe(), ask_name=SHARE, usage=llm.usage())
 
 
 @app.get("/api/friends")
@@ -670,6 +672,9 @@ def send(friend):
     text = (request.json or {}).get("text", "").strip()
     if not text:
         abort(400)
+    usage = llm.usage()
+    if usage and usage["used"] >= usage["limit"]:
+        return jsonify(error="今天的免費次數用完了", usage=usage), 429
     name = user_name()
     key = chat_key(friend, name)
     with lock:
@@ -678,6 +683,8 @@ def send(friend):
         save_chat(key, messages)
         try:
             raw, emotion, reply = reply_to(friend, messages, text, name)
+        except llm.QuotaExceeded as e:
+            return jsonify(error=str(e), usage=llm.usage()), 429
         except RuntimeError as e:
             return jsonify(error=str(e)), 502
         if not reply:
