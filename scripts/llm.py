@@ -1,8 +1,9 @@
-"""Get a reply from a local model through Ollama's OpenAI-compatible API.
+"""Get a reply from a local model through Ollama, or from an online API like Gemini.
 
-Which one is used is "active" in config/llm.json: "ollama" on this computer
-or "server" on the other one, so switching is a config change.
-Uses only the standard library.
+Which one is used is "active" in config/llm.json: "ollama_8b" on this computer,
+"server" on the other one, or "gemini" online, so switching is a config change.
+An online provider has "api": "openai" and a "fallback" used when it fails or
+its free quota runs out. Uses only the standard library.
 """
 
 import json
@@ -15,7 +16,7 @@ from pathlib import Path
 
 PROJECT = Path(__file__).resolve().parent.parent
 CONFIG = PROJECT / "config" / "llm.json"
-THINK = re.compile(r"<think>.*?</think>", re.S)  # Qwen3 等推理模型會先輸出思考過程
+THINK = re.compile(r"<(think|thought)>.*?</>", re.S)  # Qwen3、Gemma 等推理模型會先輸出思考過程
 
 
 def load_config():
@@ -44,6 +45,15 @@ def call(name, messages, temperature=None):
     p = load_config()["providers"][name]
     if p.get("history_turns"):
         messages = trim(messages, p["history_turns"])
+    if p.get("api") == "openai":
+        try:
+            return call_openai(name, p, messages, temperature)
+        except RuntimeError as e:
+            if not p.get("fallback"):
+                raise
+            # 免費額度用完（429）或連不上時，退回本地模型，聊天不會斷
+            print(f"{e}，改用 {p['fallback']}")
+            return call(p["fallback"], messages, temperature)
     # 用 Ollama 原生的 /api/chat：OpenAI 相容的 /v1 不能設 num_ctx，只能用預設的 4096，
     # 角色資料加兩段詳細資料加對話就超過，最前面的提示會被截掉
     options = {"num_predict": p.get("max_tokens", 300), "num_ctx": p.get("num_ctx", 4096)}
@@ -70,6 +80,36 @@ def call(name, messages, temperature=None):
     return THINK.sub("", text).strip()
 
 
+def call_openai(name, p, messages, temperature):
+    """Reply from an OpenAI-compatible API, e.g. Gemini; the key is in key_file, which is not in git."""
+    try:
+        key = (PROJECT / p["key_file"]).read_text(encoding="utf-8").strip()
+    except OSError:
+        raise RuntimeError(f"{name} 找不到 API key（{p['key_file']}）") from None
+    body = {"model": p["model"], "messages": messages, "max_tokens": p.get("max_tokens", 300)}
+    if temperature is not None:
+        body["temperature"] = temperature
+    elif "temperature" in p:
+        body["temperature"] = p["temperature"]
+    req = urllib.request.Request(f"{p['base_url'].rstrip('/')}/chat/completions",
+                                 data=json.dumps(body).encode("utf-8"),
+                                 headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"})
+    try:
+        data = json.loads(urllib.request.urlopen(req, timeout=60).read())
+        text = data["choices"][0]["message"].get("content") or ""
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"{name} 回傳錯誤 {e.code}：{e.read().decode('utf-8', 'replace')[:300]}") from None
+    except (OSError, KeyError, IndexError, ValueError) as e:
+        raise RuntimeError(f"連不上 {name}：{e}") from None
+    return THINK.sub("", text).strip()
+
+
+def local_provider(cfg):
+    """The Ollama provider in use: the active one, or the fallback of an online one."""
+    p = cfg["providers"][cfg["active"]]
+    return cfg["providers"][p["fallback"]] if p.get("api") == "openai" and p.get("fallback") else p
+
+
 def ollama_url(p):
     """Ollama's own address from a provider's base_url (config keeps the OpenAI-style .../v1)."""
     return re.sub(r"/v1/?$", "", p["base_url"].rstrip("/"))
@@ -84,7 +124,7 @@ def embed(texts):
     cfg = load_config()
     if not texts or not cfg.get("embed_model"):
         return None
-    base = ollama_url(cfg["providers"][cfg["active"]])
+    base = ollama_url(local_provider(cfg))
     body = {"model": cfg["embed_model"], "input": texts, "options": {"num_gpu": 0}, "keep_alive": -1}
     req = urllib.request.Request(f"{base}/api/embed", data=json.dumps(body).encode("utf-8"),
                                  headers={"Content-Type": "application/json"})
@@ -100,9 +140,11 @@ def cosine(a, b):
 
 
 def is_local():
-    """Whether the active model runs on this computer, so Freminet Chat.exe knows to start Ollama."""
-    cfg = load_config()
-    url = cfg["providers"][cfg["active"]]["base_url"]
+    """Whether Ollama on this computer is used, so Freminet Chat.exe knows to start it.
+
+    With an online model it still is, for the fallback and the embeddings.
+    """
+    url = local_provider(load_config())["base_url"]
     return any(host in url for host in ("://127.0.0.1", "://localhost"))
 
 

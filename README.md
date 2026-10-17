@@ -225,7 +225,7 @@ python scripts/app.py
 | `characters/freminet-cursor.png` | 跟着滑鼠的小菲米尼，從 `freminet profile/cursor/chibi-character-4x.png` 切掉透明邊、縮成 128px 寬。不放進 git；沒有就不出現 |
 | `characters/freminet-cursor-click.png`、`freminet-cursor-text.png` | 滑鼠指着可以點的東西 / 輸入欄時換成這兩張，從 `freminet profile/cursor/` 的 `hug-character-4x.png`（抱佩伊）和 `book-character-4x.png`（拿書）縮成 128px 寬。不放進 git；沒有就一直用上面那張 |
 | `characters/freminet-heart.png` | 點他飄出來的愛心，從 `freminet profile/interactive asset/Pixel Heart Sprite Sheet 32x32.png` 複製。不放進 git |
-| `config/llm.json` | 用哪個 LLM。現在用 `ollama_8b`（這部的 8b）；`ollama_9b`（qwen3.5:9b，試過不用）、`ollama`（4b）、`server`（另一部電腦的 14b，不用了）也還在。`num_ctx` 是上下文長度 |
+| `config/llm.json` | 用哪個 LLM。現在用 `gemini`（Gemini 3.5 Flash Lite 免費 API，每天 500 次，太平洋時間半夜重置；key 放 `config/gemini_key.txt`，不上傳；失敗或額度用完自動退回 `ollama_8b`）；`ollama_8b`（這部的 8b）；`ollama_9b`（qwen3.5:9b，試過不用）、`ollama`（4b）、`server`（另一部電腦的 14b，不用了）也還在。`num_ctx` 是上下文長度 |
 | `config/tts.json` | GPT-SoVITS 整合包的路徑，每部電腦不同。路徑用 `/` 分隔 |
 | `characters/freminet.md` | 角色資料，每則訊息都會整份放進系統提示。改完不用重開 app，下一則訊息就會用新的 |
 | `characters/freminet-lore.md` | 詳細資料，每段有「關鍵詞：」一行。最新一則訊息（沒有的話前一則）有關鍵詞，才把那段放進系統提示，最多 `MAX_LORE` 段。改完也不用重開 |

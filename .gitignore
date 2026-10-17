@@ -17,3 +17,6 @@ app.log
 # scripts/make_bundle.py 做出來的（給朋友的資料夾）
 dist/
 
+
+# Gemini API key，不能上傳
+config/gemini_key.txt
