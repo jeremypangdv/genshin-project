@@ -649,7 +649,7 @@ def ready():
 def status():
     # 分享時用的是這部電腦的 key，不問朋友
     return jsonify(voice=voice["state"], llm=llm.describe(), ask_name=SHARE, usage=llm.usage(),
-                   need_key=not SHARE and llm.needs_key())
+                   need_key=not SHARE and llm.needs_key(), change_key=not SHARE and llm.online())
 
 
 KEY_PAGE = "https://aistudio.google.com/apikey"  # 拿 Gemini API key 的地方
@@ -727,6 +727,8 @@ def send(friend):
             raw, emotion, reply = reply_to(friend, messages, text, name)
         except llm.QuotaExceeded as e:
             return jsonify(error=str(e), usage=llm.usage()), 429
+        except llm.BadKey as e:
+            return jsonify(error=str(e), need_key=not SHARE), 401
         except RuntimeError as e:
             return jsonify(error=str(e)), 502
         if not reply:
@@ -858,6 +860,7 @@ EDGE = [Path(os.environ.get(k, "")) / "Microsoft/Edge/Application/msedge.exe"
 
 def start():
     print(f"LLM：{llm.describe()}")
+    llm.check_saved_key()
     # 先把模型載入和預熱好才開聊天，打開時就能直接聊
     load_voice()
     if voice["state"] == "failed":

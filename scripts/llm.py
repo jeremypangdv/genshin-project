@@ -25,6 +25,13 @@ usage_lock = threading.Lock()
 THINK = re.compile(r"<(think|thought)>.*?</>", re.S)  # Qwen3、Gemma 等推理模型會先輸出思考過程
 
 
+class BadKey(RuntimeError):
+    """Google says the API key doesn't work (deleted, or copied wrong), so the page asks for a new one."""
+
+
+bad_keys = set()  # 試過不能用的 key，聊天畫面會再叫你輸入
+
+
 class QuotaExceeded(RuntimeError):
     """Today's free requests are used up, so chatting stops until reset."""
 
@@ -103,25 +110,53 @@ def needs_key(cfg=None):
     """Whether the online model in use has no API key yet, so the page asks for one."""
     cfg = cfg or load_config()
     p = cfg["providers"][cfg["active"]]
-    return online(cfg) and "key_file" in p and not has_key(p)
+    if not (online(cfg) and "key_file" in p):
+        return False
+    try:
+        return key_path(p).read_text(encoding="utf-8").strip() in bad_keys | {""}
+    except OSError:
+        return True
 
 
-def save_key(key):
-    """Try the key on the online model in use and save it if it works; raises RuntimeError if not.
+def check_key(key, p=None):
+    """Raises BadKey if Google rejects the key, RuntimeError if it can't be reached.
 
     Lists the models instead of chatting, so trying doesn't use up the free requests.
     """
-    cfg = load_config()
-    p = cfg["providers"][cfg["active"]]
+    if p is None:
+        cfg = load_config()
+        p = cfg["providers"][cfg["active"]]
     req = urllib.request.Request(f"{p['base_url'].rstrip('/')}/models", headers={"Authorization": f"Bearer {key}"})
     try:
         urllib.request.urlopen(req, timeout=20).read()
     except urllib.error.HTTPError as e:
         if e.code in (400, 401, 403):
-            raise RuntimeError("這個 API key 不能用，請檢查有沒有複製完整") from None
+            bad_keys.add(key)
+            raise BadKey("這個 API key 不能用，請檢查有沒有複製完整") from None
         raise RuntimeError(f"Google 回傳錯誤 {e.code}，請等一下再試") from None
     except OSError:
         raise RuntimeError("連不上 Google，請檢查網路") from None
+
+
+def check_saved_key():
+    """At start: find out if the saved key was deleted, so the page asks for a new one before chatting."""
+    cfg = load_config()
+    p = cfg["providers"][cfg["active"]]
+    if needs_key(cfg) or "key_file" not in p:
+        return
+    try:
+        check_key(key_path(p).read_text(encoding="utf-8").strip(), p)
+    except BadKey:
+        print("存着的 API key 不能用了，聊天畫面會叫你重新輸入")
+    except RuntimeError as e:
+        print(f"沒辦法檢查 API key：{e}")
+
+
+def save_key(key):
+    """Try the key on the online model in use and save it if it works; raises RuntimeError if not."""
+    cfg = load_config()
+    p = cfg["providers"][cfg["active"]]
+    check_key(key, p)
     key_path(p).write_text(key, encoding="utf-8")
 
 
@@ -204,6 +239,9 @@ def call_openai(name, p, messages, temperature):
         detail = e.read().decode("utf-8", "replace")
         if e.code == 429 and "PerDay" in detail:  # 每天的額度；每分鐘的是 PerMinute
             raise QuotaExceeded("今天的免費次數用完了") from None
+        if e.code in (401, 403) or "API_KEY_INVALID" in detail:
+            bad_keys.add(key)
+            raise BadKey("API key 不能用了（可能被刪掉了），請重新輸入") from None
         raise RuntimeError(f"{name} 回傳錯誤 {e.code}：{detail[:300]}") from None
     except (OSError, KeyError, IndexError, ValueError) as e:
         raise RuntimeError(f"連不上 {name}：{e}") from None

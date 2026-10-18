@@ -213,6 +213,9 @@
   .ask-key button { width: 100%; margin-top: 12px; padding: 11px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font: inherit; font-size: 15px; }
   .ask-key button:disabled { background: #b3c5bf; }
   .ask-key .help { background: var(--panel-2); color: var(--accent-dark); }
+  .ask-key .cancel { background: none; color: var(--muted); margin-top: 4px; }
+  .ask-key .cancel[hidden], .change-key[hidden] { display: none; }
+  .bg-panel .change-key { display: block; width: 100%; margin-top: 10px; }
   .ask-key .steps { display: grid; grid-template-columns: 250px 1fr; gap: 20px; align-items: start; padding: 18px 22px 20px;
     border-top: 1px solid var(--line); font-size: 14px; }
   .ask-key .steps h3 { margin: 0 0 12px; font-size: 16px; font-weight: 600; }
@@ -267,12 +270,13 @@
 <div class="ask-key" hidden>
   <div class="card">
     <form>
-      <p>輸入 Gemini API key</p>
+      <p class="title">輸入 Gemini API key</p>
       <small>免費的，用你自己的 Google 帳號就能拿到</small>
       <input placeholder="貼上 API key" autocomplete="off" spellcheck="false">
       <div class="err" hidden></div>
       <button class="ok" disabled>確認</button>
       <button class="help" type="button">怎麼拿 API key？</button>
+      <button class="cancel" type="button" hidden>取消</button>
     </form>
     <div class="steps" hidden>
       <div>
@@ -333,6 +337,7 @@
       <div class="bar"><i></i></div>
       <small></small>
     </div>
+    <button class="bg-btn alt change-key" data-act="change-key" hidden>更換 API key</button>
   </div>
   <div class="quota" hidden></div>
   <div class="messages"></div>
@@ -627,11 +632,16 @@ function askName(changing = false) {
 }
 
 // 用網上模型但還沒有 API key：要輸入，試過能用才存
-function askKey() {
+// changing：從設定按「更換 API key」打開的，可以取消；回傳有沒有換
+function askKey(changing = false) {
   const box = $(".ask-key"), card = $(".card", box), form = $("form", box), input = $("input", box),
     btn = $(".ok", box), err = $(".err", box), steps = $(".steps", box);
   box.hidden = false;
+  $(".title", box).textContent = changing ? "更換 Gemini API key" : "輸入 Gemini API key";
+  $(".cancel", box).hidden = !changing;
+  input.value = "";
   input.oninput = () => { btn.disabled = !input.value.trim(); err.hidden = true; };
+  input.oninput();
   input.focus();
   // 教學影片：點步驟跳到那一段，播放時標出現在到哪一步；沒有影片就只列步驟
   const video = $("video", box), marks = [...box.querySelectorAll("li[data-t]")];
@@ -655,6 +665,7 @@ function askKey() {
     api("/api/key-page", { method: "POST" }).catch(() => open("https://aistudio.google.com/apikey"));
   };
   return new Promise(done => {
+    $(".cancel", box).onclick = () => { box.hidden = true; done(false); };
     form.onsubmit = async e => {
       e.preventDefault();
       btn.disabled = true;
@@ -662,7 +673,7 @@ function askKey() {
       try {
         await api("/api/key", { method: "POST", body: JSON.stringify({ key: input.value.trim() }) });
         box.hidden = true;
-        done();
+        done(true);
       } catch (x) {
         err.textContent = x.message;
         err.hidden = false;
@@ -679,7 +690,7 @@ async function api(path, opts = {}) {
   const headers = { "Content-Type": "application/json", ...who() };
   const res = await fetch(path, { headers, ...opts });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  if (!res.ok) throw Object.assign(new Error(data.error || `HTTP ${res.status}`), { data });
   return data;
 }
 
@@ -786,6 +797,12 @@ async function openChat(friend) {
     if (state.busy || !await askName(true)) return;
     await loadFriends();
     openChat(state.friends.find(f => f.id === friend.id) || friend);
+  };
+  const keyBtn = $("[data-act=change-key]", main);
+  keyBtn.hidden = !state.changeKey;
+  keyBtn.onclick = async () => {
+    $(".bg-panel", main).hidden = true;
+    if (await askKey(true)) refreshStatus();
   };
   $("[data-act=back]", main).onclick = () => { $("#app").classList.remove("open"); stopPlaying(); };
   const view = $("[data-act=view]", main);
@@ -938,6 +955,8 @@ async function send(text) {
     el.textContent = `發送失敗：${e.message}`;
     $(".messages")?.append(el);
     scrollDown();
+    // key 被刪掉或不對：叫他重新輸入
+    if (e.data?.need_key) askKey().then(refreshStatus);
   } finally {
     state.busy = false; updateHeader(); syncSend();
     refreshUsage();
@@ -962,6 +981,7 @@ refreshStatus();
 (async () => {
   const s = await api("/api/status").catch(() => ({}));
   state.askName = !!s.ask_name;
+  state.changeKey = !!s.change_key;
   if (state.askName && !userName) await askName();
   if (s.need_key) { await askKey(); refreshStatus(); }
   // 沒有好友列表，直接打開第一個好友的聊天

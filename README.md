@@ -63,6 +63,7 @@
   - 2026-10-19 dist 改用 Gemini，但不放 key：朋友打開時跳出輸入 key 的畫面，按「怎麼拿 API key？」旁邊列出步驟（AI Studio 的按鈕名稱是照記憶寫的，還沒對過現在的網頁）。按確認會先向 Google 試 key，能用才存進 `config/gemini_key.txt`，下次不用再輸入；錯的會顯示紅字。用 dist 測過：教學展開、錯的 key 都正常；對的 key 只在 `llm.save_key` 測過，沒在畫面上輸入（不想把自己的 key 存進 dist）
   - 2026-10-19 拿掉本地模型，只用 Gemini：沒有 key 一定要輸入（沒有跳過）；連不上不再退回 8b，直接顯示錯誤；次數用完上面跳紅色提示、輸入欄鎖住（測過）。記憶的 embedding 改用 `gemini-embedding-001`（不算進每天 500 次，有自己的免費額度），它的相似度比 qwen 高，相關的約 0.68–0.80、不相關的約 0.61–0.63，所以 `embed_related` 設 0.66。dist 不再放 Ollama，exe 也不會開 Ollama；`dist/Freminet Chat/ollama/`（約 6GB）要自己刪。專案的 `config/llm.json` 還留着 `ollama_8b` 這些設定，但 `embed_model` 已經是 Gemini 的，改回本地要一起改
   - 2026-10-19 教學加影片：`tutorial video/` 裏的第一個 mp4（`/tutorial.mp4`），放在步驟旁邊；點步驟跳到影片那一段，播放時標出現在到哪一步。步驟照影片改過（Get API key → Create API key → Create key → Copy key）。影片錄到的 key 已經在 AI Studio 刪掉了；`tutorial video/` 沒放進 git
+  - 2026-10-19 存着的 key 被刪掉也會叫你重新輸入：開的時候先向 Google 試一次（不算次數），聊天時 Google 說 key 不能用也會跳出輸入畫面。設定（齒輪）裏有「更換 API key」，打開同一個畫面，可以取消。換 key 不影響聊天記錄和記憶（都存在 `chats/`）
 
 ## 資料
 
@@ -229,7 +230,7 @@ python scripts/app.py
 | `characters/freminet-cursor.png` | 跟着滑鼠的小菲米尼，從 `freminet profile/cursor/chibi-character-4x.png` 切掉透明邊、縮成 128px 寬。不放進 git；沒有就不出現 |
 | `characters/freminet-cursor-click.png`、`freminet-cursor-text.png` | 滑鼠指着可以點的東西 / 輸入欄時換成這兩張，從 `freminet profile/cursor/` 的 `hug-character-4x.png`（抱佩伊）和 `book-character-4x.png`（拿書）縮成 128px 寬。不放進 git；沒有就一直用上面那張 |
 | `characters/freminet-heart.png` | 點他飄出來的愛心，從 `freminet profile/interactive asset/Pixel Heart Sprite Sheet 32x32.png` 複製。不放進 git |
-| `config/llm.json` | 用哪個 LLM。現在用 `gemini`（Gemini 3.5 Flash Lite 免費 API，每天 500 次，太平洋時間半夜重置；key 放 `config/gemini_key.txt`，不上傳，沒有的話聊天畫面會叫你輸入；`daily_limit` 是每天次數，數在 `chats/api_usage.json`，聊天背景的設定裏看得到，用完了上面跳提示、輸入欄鎖住，到重置時間才能再聊）；`ollama_8b`（這部的 8b）；`ollama_9b`（qwen3.5:9b，試過不用）、`ollama`（4b）、`server`（另一部電腦的 14b，不用了）也還在。`num_ctx` 是上下文長度 |
+| `config/llm.json` | 用哪個 LLM。現在用 `gemini`（Gemini 3.5 Flash Lite 免費 API，每天 500 次，太平洋時間半夜重置；key 放 `config/gemini_key.txt`，不上傳；沒有或不能用時聊天畫面會叫你輸入，設定（齒輪）裏可以「更換 API key」；`daily_limit` 是每天次數，數在 `chats/api_usage.json`，聊天背景的設定裏看得到，用完了上面跳提示、輸入欄鎖住，到重置時間才能再聊）；`ollama_8b`（這部的 8b）；`ollama_9b`（qwen3.5:9b，試過不用）、`ollama`（4b）、`server`（另一部電腦的 14b，不用了）也還在。`num_ctx` 是上下文長度 |
 | `config/tts.json` | GPT-SoVITS 整合包的路徑，每部電腦不同。路徑用 `/` 分隔 |
 | `characters/freminet.md` | 角色資料，每則訊息都會整份放進系統提示。改完不用重開 app，下一則訊息就會用新的 |
 | `characters/freminet-lore.md` | 詳細資料，每段有「關鍵詞：」一行。最新一則訊息（沒有的話前一則）有關鍵詞，才把那段放進系統提示，最多 `MAX_LORE` 段。改完也不用重開 |
