@@ -36,7 +36,6 @@ CHAT_DIR = PROJECT / "chats"
 SHARE = "--share" in sys.argv  # share/share.py 開的：朋友從 ngrok 連進來，每個人用名字分開聊天記錄
 CHARACTER_DIR = PROJECT / "characters"
 MAX_FACTS = 400  # 對方的資料超過這麼多字，系統提示只放和這則訊息最相關的（全部還是存着）
-RELATED = 0.5  # 新舊兩條資料的 embedding 相似度到這個（「麵包店打工」和「現在在咖啡店上班」約 0.55），才問 8b 新的有沒有取代舊的
 LOOKUP_LINES = 8  # look_up 最多給 8b 看幾行
 KEEP_VOICES = 50  # 每個角色只留最近 50 則語音（約 25MB），更早的刪掉 wav，只剩文字
 MAX_LORE = 2  # 詳細資料（characters/<friend>-lore.md）每則訊息最多放幾段，上下文只有 num_ctx（4096）
@@ -132,8 +131,10 @@ def warm_up():
             voice["state"], voice["proc"] = "failed", None
         if voice["state"] == "ready" and not voice_works():
             voice["state"] = "failed"
-    # 用網上的模型時預熱本地的備用模型：網上的不用預熱，也不要浪費免費次數
-    name = llm.local_name()
+    # 網上的模型不用預熱，也不要浪費免費次數
+    if llm.online():
+        return
+    name = llm.load_config()["active"]
     print(f"預熱 LLM（{name}）…", end="", flush=True)
     try:
         # 用真的系統提示，Ollama 會把這段快取起來，第一則訊息就不用重新讀
@@ -480,7 +481,9 @@ def replaced(fact, lines):
         return None
     near = sorted(((llm.cosine(vecs[0], v), l) for v, l in zip(vecs[1:], lines)), reverse=True)
     gone = []
-    for _, old in [n for n in near[:3] if n[0] >= RELATED]:
+    # 新舊兩條的相似度到 embed_related，才問模型新的有沒有取代舊的
+    related = llm.load_config().get("embed_related", 0.5)
+    for _, old in [n for n in near[:3] if n[0] >= related]:
         try:
             out = llm.chat([{"role": "user", "content": f"""舊資料（以前記下的）：{old.lstrip("- ")}
 新資料（對方剛剛說的）：{fact}
@@ -627,6 +630,16 @@ def cursor(name):
     return send_from_directory(APP_DIR / "cursors", name)
 
 
+@app.get("/tutorial.mp4")
+def tutorial():
+    # 拿 API key 的教學影片：tutorial video/ 裏的第一個 mp4，檔名隨便取
+    # 分享時不問 key，也不給外面的人看（影片裏有 key）
+    video = next(iter(sorted((PROJECT / "tutorial video").glob("*.mp4"))), None)
+    if SHARE or not video:
+        abort(404)
+    return send_from_directory(video.parent, video.name)
+
+
 @app.get("/api/ready")
 def ready():
     return jsonify(ready=started.is_set())
@@ -634,7 +647,36 @@ def ready():
 
 @app.get("/api/status")
 def status():
-    return jsonify(voice=voice["state"], llm=llm.describe(), ask_name=SHARE, usage=llm.usage())
+    # 分享時用的是這部電腦的 key，不問朋友
+    return jsonify(voice=voice["state"], llm=llm.describe(), ask_name=SHARE, usage=llm.usage(),
+                   need_key=not SHARE and llm.needs_key())
+
+
+KEY_PAGE = "https://aistudio.google.com/apikey"  # 拿 Gemini API key 的地方
+
+
+@app.post("/api/key")
+def set_key():
+    if SHARE:
+        abort(403)
+    key = (request.json or {}).get("key", "").strip()
+    if not key:
+        abort(400)
+    try:
+        llm.save_key(key)
+    except RuntimeError as e:
+        return jsonify(error=str(e)), 400
+    print(f"API key 存好了，LLM：{llm.describe()}")
+    return jsonify(ok=True, usage=llm.usage())
+
+
+@app.post("/api/key-page")
+def open_key_page():
+    # 用平常的瀏覽器打開（已經登入 Google），不是聊天視窗那個獨立的 Edge
+    if SHARE:
+        abort(403)
+    webbrowser.open(KEY_PAGE)
+    return jsonify(ok=True)
 
 
 @app.get("/api/friends")

@@ -34,9 +34,9 @@
   - GPT-SoVITS 的路徑寫在 `config/tts.json`
   - `active` 是 `server` 時，`Freminet Chat.exe` 不會開本地 Ollama，那部電腦不用裝
   - 沒有 NVIDIA 顯卡就自動改用 CPU（能用但每句要 30 秒以上）
-- [x] 打包給朋友（2026-10-09）：先 `build_exe.bat`，再 `python scripts/make_bundle.py`，做出 `dist/Freminet Chat/`（約 22.2GB），朋友雙擊 exe 就能用，不用裝任何東西
-  - 裏面有 GPT-SoVITS（拿掉訓練用的東西，它的 Python 也用來跑聊天程式）、Ollama + `qwen3:8b` + `qwen3-embedding:0.6b`（記憶用，2026-10-10 加入並重新打包）（用 11435 埠，不和朋友自己的 Ollama 撞）
-  - 不包括這部電腦的聊天記錄；最好有 NVIDIA 顯卡
+- [x] 打包給朋友（2026-10-09）：先 `build_exe.bat`，再 `python scripts/make_bundle.py`，做出 `dist/Freminet Chat/`，朋友雙擊 exe 就能用，不用裝任何東西；第一次打開要輸入他自己的 Gemini API key（有步驟和教學影片）
+  - 裏面有 GPT-SoVITS（拿掉訓練用的東西，它的 Python 也用來跑聊天程式）和 `tutorial video/`。2026-10-19 起回覆用 Gemini，不再放 Ollama、`qwen3:8b`、`qwen3-embedding:0.6b`（以前用 11435 埠）
+  - 不包括這部電腦的聊天記錄和 Gemini key；最好有 NVIDIA 顯卡（語音比較快）
   - 2026-10-09 測試過：打包版能開、語音和回覆正常。給朋友時把 `dist/Freminet Chat/` 整個資料夾給他們
   - 2026-10-10：關掉聊天視窗會一起關掉自帶的 Ollama（不然模型一直佔着顯卡），測試過約 2 分鐘後全部關掉
   - 2026-10-12：朋友的 RTX 5060 Laptop 語音能播但沒聲音（自帶的 torch 2.0 不支援 RTX 50 系列）。改成開啟時先試念一句，沒聲音或出錯就自動改用 CPU 重新載入語音模型；半精度改用 GPT-SoVITS 自己的判斷（GTX 10 / 16 系列不開）。CPU 模式測過有聲音，還沒在朋友電腦上試。zip 還是 10/11 的舊版，要重新打包（或只給朋友新的 `scripts/app.py`、`scripts/tts.py`）
@@ -59,6 +59,10 @@
   - 手機版面：用 Edge 模擬 320 / 360 / 390 / 430px 寬測過；鍵盤彈出時的效果模擬不了，還沒在真的手機上試。ngrok 整套還沒實際跑過
 - [x] 2026-10-17 不反問自己的事：8b 會說「我也有隻企鵝…叫佩伊。它…和你一樣喜歡待在水裏嗎？」，把菲米尼自己的事拿來問對方。`freminet.md` 加一條：自己的事（佩伊、家人、做的東西）不問對方，要問就問對方自己的事。還沒測過效果
   - 重做 exe、重跑 `make_bundle.py` 更新 `dist/Freminet Chat/`：之前的 exe 和 dist 停在 10/10，沒有關視窗停 Ollama、按話題載入資料和之後的角色修改。PyInstaller 會用 `build/` 的快取不重做，要加 `--clean`；中文輸出在 Git Bash 要設 `PYTHONIOENCODING=utf-8`
+  - 2026-10-19 再跑一次 `make_bundle.py`（21.6GB），dist 和專案的程式、角色資料一樣了
+  - 2026-10-19 dist 改用 Gemini，但不放 key：朋友打開時跳出輸入 key 的畫面，按「怎麼拿 API key？」旁邊列出步驟（AI Studio 的按鈕名稱是照記憶寫的，還沒對過現在的網頁）。按確認會先向 Google 試 key，能用才存進 `config/gemini_key.txt`，下次不用再輸入；錯的會顯示紅字。用 dist 測過：教學展開、錯的 key 都正常；對的 key 只在 `llm.save_key` 測過，沒在畫面上輸入（不想把自己的 key 存進 dist）
+  - 2026-10-19 拿掉本地模型，只用 Gemini：沒有 key 一定要輸入（沒有跳過）；連不上不再退回 8b，直接顯示錯誤；次數用完上面跳紅色提示、輸入欄鎖住（測過）。記憶的 embedding 改用 `gemini-embedding-001`（不算進每天 500 次，有自己的免費額度），它的相似度比 qwen 高，相關的約 0.68–0.80、不相關的約 0.61–0.63，所以 `embed_related` 設 0.66。dist 不再放 Ollama，exe 也不會開 Ollama；`dist/Freminet Chat/ollama/`（約 6GB）要自己刪。專案的 `config/llm.json` 還留着 `ollama_8b` 這些設定，但 `embed_model` 已經是 Gemini 的，改回本地要一起改
+  - 2026-10-19 教學加影片：`tutorial video/` 裏的第一個 mp4（`/tutorial.mp4`），放在步驟旁邊；點步驟跳到影片那一段，播放時標出現在到哪一步。步驟照影片改過（Get API key → Create API key → Create key → Copy key）。影片錄到的 key 已經在 AI Studio 刪掉了；`tutorial video/` 沒放進 git
 
 ## 資料
 
@@ -225,11 +229,11 @@ python scripts/app.py
 | `characters/freminet-cursor.png` | 跟着滑鼠的小菲米尼，從 `freminet profile/cursor/chibi-character-4x.png` 切掉透明邊、縮成 128px 寬。不放進 git；沒有就不出現 |
 | `characters/freminet-cursor-click.png`、`freminet-cursor-text.png` | 滑鼠指着可以點的東西 / 輸入欄時換成這兩張，從 `freminet profile/cursor/` 的 `hug-character-4x.png`（抱佩伊）和 `book-character-4x.png`（拿書）縮成 128px 寬。不放進 git；沒有就一直用上面那張 |
 | `characters/freminet-heart.png` | 點他飄出來的愛心，從 `freminet profile/interactive asset/Pixel Heart Sprite Sheet 32x32.png` 複製。不放進 git |
-| `config/llm.json` | 用哪個 LLM。現在用 `gemini`（Gemini 3.5 Flash Lite 免費 API，每天 500 次，太平洋時間半夜重置；key 放 `config/gemini_key.txt`，不上傳；連不上時退回 `ollama_8b`；`daily_limit` 是每天次數，數在 `chats/api_usage.json`，聊天背景的設定裏看得到，用完了上面跳提示、輸入欄鎖住，到重置時間才能再聊）；`ollama_8b`（這部的 8b）；`ollama_9b`（qwen3.5:9b，試過不用）、`ollama`（4b）、`server`（另一部電腦的 14b，不用了）也還在。`num_ctx` 是上下文長度 |
+| `config/llm.json` | 用哪個 LLM。現在用 `gemini`（Gemini 3.5 Flash Lite 免費 API，每天 500 次，太平洋時間半夜重置；key 放 `config/gemini_key.txt`，不上傳，沒有的話聊天畫面會叫你輸入；`daily_limit` 是每天次數，數在 `chats/api_usage.json`，聊天背景的設定裏看得到，用完了上面跳提示、輸入欄鎖住，到重置時間才能再聊）；`ollama_8b`（這部的 8b）；`ollama_9b`（qwen3.5:9b，試過不用）、`ollama`（4b）、`server`（另一部電腦的 14b，不用了）也還在。`num_ctx` 是上下文長度 |
 | `config/tts.json` | GPT-SoVITS 整合包的路徑，每部電腦不同。路徑用 `/` 分隔 |
 | `characters/freminet.md` | 角色資料，每則訊息都會整份放進系統提示。改完不用重開 app，下一則訊息就會用新的 |
 | `characters/freminet-lore.md` | 詳細資料，每段有「關鍵詞：」一行。最新一則訊息（沒有的話前一則）有關鍵詞，才把那段放進系統提示，最多 `MAX_LORE` 段。改完也不用重開 |
-| `scripts/llm.py` | 呼叫 LLM，用 Ollama 的 OpenAI 格式介面 |
+| `scripts/llm.py` | 呼叫 LLM：Gemini 用 OpenAI 格式的介面，Ollama 用原生 `/api/chat`；數每天的次數、試和存 API key、embedding |
 | `scripts/app.py` | 伺服器：LLM 回覆 → 拆出情緒 → GPT-SoVITS 念出來 |
 | `app/index.html` | 聊天介面 |
 | `app/cursors/` | 自己畫的鼠標（SVG，32×32）：`normal` 冰藍箭頭、`click` 金色箭頭加齒輪、`text` 深藍 I 字。在 `app/index.html` 開頭的 `--cur-*` 設定，後面的數字是點擊位置 |
@@ -238,6 +242,7 @@ python scripts/app.py
 | `chats/` | 聊天記錄（不放進 git）；介面右上角垃圾桶可以清除，連摘要和語音檔一起清 |
 | `chats/<角色>.memory.json` | 舊對話的記憶：`facts` 對方的資料、`summary` 聊過的話題，和 `upto`（記憶包括到第幾則訊息） |
 | `chats/<角色>@<名字>.json`、`.memory.json` | 用連結分享時，每個朋友自己的聊天記錄和記憶 |
+| `tutorial video/` | 拿 API key 的教學影片（第一個 mp4），沒有 key 時的輸入畫面裏放在步驟旁邊。不放進 git；分享模式不給看 |
 | `share/` | 用連結分享給朋友：`分享給朋友.bat` 跑 `share.py`，用 `C:\ngrok\ngrok.exe` |
 
 - **介面右上角**（由左到右）：
@@ -258,9 +263,9 @@ python scripts/app.py
   - **對方的資料**（`facts`）：名字、寵物、生日、工作、喜好這類，只從對方傳的訊息裏找。以前和話題混在一份摘要裏，聊 48 輪後名字、貓、生日全被當成舊的刪掉。2026-10-10 加了三步（`merge_facts`）：
     - **一則一則抽**（`facts_in`）：每則訊息問一次，叫 8b 把訊息「改寫成資料」，附例子。幾則一起給的話常漏掉一兩則，也會把「生日」和「下個月去旅行」拼成「生日是下個月」；叫它「找出事實」的話，連「我很喜歡貓」「我不能吃辣」都說沒有
     - **檢查有沒有記錯**（`check_facts`）：每條資料和它來自的那則訊息一起給 8b 對一次，推測、問句、把別人的事寫成對方的都丟掉。開頭是「如果 / 要是 / 假如」的程式直接丟（8b 常放行）
-    - **新的蓋掉舊的**（`replaced`）：用 embedding 找意思相近的舊資料（相似度 ≥ `RELATED`），一條一條問 8b「聽了新的，舊的還對嗎」，換個問法再問一次（`still_true`），兩次都說不對才刪。只問一次的話會刪錯（「在花店工作」刪掉了「住在花蓮」）。沒刪到的舊資料留着也沒關係：資料照時間排，提示寫明「越後面越新，前後不一樣以後面為準」
+    - **新的蓋掉舊的**（`replaced`）：用 embedding 找意思相近的舊資料（相似度 ≥ `config/llm.json` 的 `embed_related`），一條一條問模型「聽了新的，舊的還對嗎」，換個問法再問一次（`still_true`），兩次都說不對才刪。只問一次的話會刪錯（「在花店工作」刪掉了「住在花蓮」）。沒刪到的舊資料留着也沒關係：資料照時間排，提示寫明「越後面越新，前後不一樣以後面為準」
     - 資料不再合併縮短，全部存着；超過 `MAX_FACTS`（400 字）時系統提示只放名字和跟這則訊息最相關的幾條（`relevant_facts`）
-  - **embedding**：`qwen3-embedding:0.6b`（`config/llm.json` 的 `embed_model`，約 640MB），在 CPU 跑（顯卡已經被 GPT-SoVITS 和 8b 佔滿），一次約 0.1 秒。用來找相近的舊資料，和 `look_up` 用意思找相關的資料（「寵物」找得到「養了一隻貓」）。沒裝的話還是能聊，只是退回比對文字、不會蓋掉舊資料。換電腦要先 `ollama pull qwen3-embedding:0.6b`；`make_bundle.py` 會一起打包
+  - **embedding**：2026-10-19 起用 Gemini 的 `gemini-embedding-001`（見上面）。以前是 `qwen3-embedding:0.6b`（`config/llm.json` 的 `embed_model`，約 640MB），在 CPU 跑（顯卡已經被 GPT-SoVITS 和 8b 佔滿），一次約 0.1 秒。用來找相近的舊資料，和 `look_up` 用意思找相關的資料（「寵物」找得到「養了一隻貓」）。沒裝的話還是能聊，只是退回比對文字、不會蓋掉舊資料。換電腦要先 `ollama pull qwen3-embedding:0.6b`；`make_bundle.py` 會一起打包
   - **摘要**（`summary`）：聊過的話題、約定、心情，300 字以內，舊的會慢慢擠掉。不准寫個人資料、不准推測（試過它自己編了一個生日）
   - 系統提示最後有「記憶」一段：資料和摘要裏有的要肯定回答。只有 `look_up` 查不到時才說「聽過但忘了」，用自己的話承認、請對方再說，不要猜，並隨機給一個合角色的說法方向（`FORGET_STYLES`）；不寫固定例句，連他自己說過的句子也不能放進提示，不然照抄
     - 以前每則訊息都放「說忘了的方式」，8b 會在不相干的回覆後面硬加「我還在想佩伊的事，一時想不起來」，或對「我很怕蟑螂」說「好像聽過但記不清」（2000 輪約 0.5%，一段對話裏說過一次就一直套）。現在平常的訊息完全不提忘了
@@ -306,7 +311,7 @@ python scripts/app.py
 
 ### LLM
 
-- 2026-10-07 本來決定只用本地模型，之後重新比較本地和 API，見[比較簡報](https://claude.ai/artifact/C4JQrqPKo8T9QSAaTbEwWc)。還沒決定
+- 2026-10-07 本來決定只用本地模型，之後重新比較本地和 API，見[比較簡報](https://claude.ai/artifact/C4JQrqPKo8T9QSAaTbEwWc)。2026-10-17 改用免費的 Gemini 3.5 Flash Lite，2026-10-19 決定只用它，拿掉本地模型的備用。下面是以前用本地模型時的記錄
 - 這部電腦的 6GB 顯存要留給 GPT-SoVITS，所以 LLM 放在另一部電腦（RTX 5060 Laptop 8GB、16GB 記憶體）跑 `qwen3:14b`
   - 14B 角色扮演算及格：聊久了可能忘記角色、對原神設定知道得少
   - 想更好：記憶體加到 32GB，換 30B-A3B 這類 MoE 模型

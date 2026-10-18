@@ -1,10 +1,11 @@
 """Get a reply from a local model through Ollama, or from an online API like Gemini.
 
-Which one is used is "active" in config/llm.json: "ollama_8b" on this computer,
-"server" on the other one, or "gemini" online, so switching is a config change.
-An online provider has "api": "openai" and a "fallback" used when it can't be
-reached. With "daily_limit" its requests are counted per day (the free quota),
-and once they run out chatting stops until the quota resets. Uses only the standard library.
+Which one is used is "active" in config/llm.json: "gemini" online (used now),
+or "ollama_8b" / "server" through Ollama, so switching is a config change.
+An online provider has "api": "openai". With "daily_limit" its requests are counted
+per day (the free quota), and once they run out chatting stops until the quota resets.
+Without a key in "key_file" the chat page asks for one (save_key).
+Uses only the standard library.
 """
 
 import json
@@ -25,7 +26,7 @@ THINK = re.compile(r"<(think|thought)>.*?</>", re.S)  # Qwen3、Gemma 等推理
 
 
 class QuotaExceeded(RuntimeError):
-    """Today's free requests are used up; not passed to the fallback, so chatting stops until reset."""
+    """Today's free requests are used up, so chatting stops until reset."""
 
 
 def load_config():
@@ -78,13 +79,50 @@ def usage():
     """
     cfg = load_config()
     limit = cfg["providers"][cfg["active"]].get("daily_limit")
-    if not limit:
+    if not limit or needs_key(cfg):
         return None
     now, utc = pacific_now()
     midnight = datetime(now.year, now.month, now.day) + timedelta(days=1)
     reset = utc.replace(tzinfo=None) + (midnight - now)
     return {"used": min(used_today(), limit), "limit": limit,
             "reset": int(reset.replace(tzinfo=timezone.utc).timestamp())}
+
+
+def key_path(p):
+    return PROJECT / p["key_file"]
+
+
+def has_key(p):
+    try:
+        return bool(key_path(p).read_text(encoding="utf-8").strip())
+    except OSError:
+        return False
+
+
+def needs_key(cfg=None):
+    """Whether the online model in use has no API key yet, so the page asks for one."""
+    cfg = cfg or load_config()
+    p = cfg["providers"][cfg["active"]]
+    return online(cfg) and "key_file" in p and not has_key(p)
+
+
+def save_key(key):
+    """Try the key on the online model in use and save it if it works; raises RuntimeError if not.
+
+    Lists the models instead of chatting, so trying doesn't use up the free requests.
+    """
+    cfg = load_config()
+    p = cfg["providers"][cfg["active"]]
+    req = urllib.request.Request(f"{p['base_url'].rstrip('/')}/models", headers={"Authorization": f"Bearer {key}"})
+    try:
+        urllib.request.urlopen(req, timeout=20).read()
+    except urllib.error.HTTPError as e:
+        if e.code in (400, 401, 403):
+            raise RuntimeError("這個 API key 不能用，請檢查有沒有複製完整") from None
+        raise RuntimeError(f"Google 回傳錯誤 {e.code}，請等一下再試") from None
+    except OSError:
+        raise RuntimeError("連不上 Google，請檢查網路") from None
+    key_path(p).write_text(key, encoding="utf-8")
 
 
 def chat(messages, temperature=None):
@@ -119,12 +157,6 @@ def call(name, messages, temperature=None):
             if limit:
                 set_used(limit)
             raise
-        except RuntimeError as e:
-            if not p.get("fallback"):
-                raise
-            # 連不上或每分鐘次數太多時，退回本地模型，聊天不會斷
-            print(f"{e}，改用 {p['fallback']}")
-            return call(p["fallback"], messages, temperature)
     # 用 Ollama 原生的 /api/chat：OpenAI 相容的 /v1 不能設 num_ctx，只能用預設的 4096，
     # 角色資料加兩段詳細資料加對話就超過，最前面的提示會被截掉
     options = {"num_predict": p.get("max_tokens", 300), "num_ctx": p.get("num_ctx", 4096)}
@@ -154,7 +186,7 @@ def call(name, messages, temperature=None):
 def call_openai(name, p, messages, temperature):
     """Reply from an OpenAI-compatible API, e.g. Gemini; the key is in key_file, which is not in git."""
     try:
-        key = (PROJECT / p["key_file"]).read_text(encoding="utf-8").strip()
+        key = key_path(p).read_text(encoding="utf-8").strip()
     except OSError:
         raise RuntimeError(f"{name} 找不到 API key（{p['key_file']}）") from None
     body = {"model": p["model"], "messages": messages, "max_tokens": p.get("max_tokens", 300)}
@@ -178,17 +210,6 @@ def call_openai(name, p, messages, temperature):
     return THINK.sub("", text).strip()
 
 
-def local_name(cfg=None):
-    """The Ollama provider in use: the active one, or the fallback of an online one."""
-    cfg = cfg or load_config()
-    p = cfg["providers"][cfg["active"]]
-    return p["fallback"] if online(cfg) and p.get("fallback") else cfg["active"]
-
-
-def local_provider(cfg):
-    return cfg["providers"][local_name(cfg)]
-
-
 def ollama_url(p):
     """Ollama's own address from a provider's base_url (config keeps the OpenAI-style .../v1)."""
     return re.sub(r"/v1/?$", "", p["base_url"].rstrip("/"))
@@ -197,18 +218,30 @@ def ollama_url(p):
 def embed(texts):
     """Vectors for texts from the embedding model (embed_model in config/llm.json), or None if it fails.
 
-    Runs on the CPU (num_gpu 0): the 6GB card is already full with GPT-SoVITS and 8b,
-    and the 0.6b model takes about 0.1 s a call there anyway.
+    With an online model it's that API's /embeddings (gemini-embedding-001; not counted
+    in daily_limit, it has its own free quota). With Ollama it runs on the CPU (num_gpu 0):
+    the 6GB card is already full with GPT-SoVITS and 8b.
     """
     cfg = load_config()
     if not texts or not cfg.get("embed_model"):
         return None
-    base = ollama_url(local_provider(cfg))
-    body = {"model": cfg["embed_model"], "input": texts, "options": {"num_gpu": 0}, "keep_alive": -1}
-    req = urllib.request.Request(f"{base}/api/embed", data=json.dumps(body).encode("utf-8"),
-                                 headers={"Content-Type": "application/json"})
+    p = cfg["providers"][cfg["active"]]
+    if online(cfg):
+        url = f"{p['base_url'].rstrip('/')}/embeddings"
+        body = {"model": cfg["embed_model"], "input": texts}
+        try:
+            headers = {"Authorization": f"Bearer {key_path(p).read_text(encoding='utf-8').strip()}"}
+        except OSError:
+            return None
+    else:
+        url = f"{ollama_url(p)}/api/embed"
+        body = {"model": cfg["embed_model"], "input": texts, "options": {"num_gpu": 0}, "keep_alive": -1}
+        headers = {}
+    req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"),
+                                 headers={"Content-Type": "application/json", **headers})
     try:
-        return json.loads(urllib.request.urlopen(req, timeout=60).read())["embeddings"]
+        data = json.loads(urllib.request.urlopen(req, timeout=60).read())
+        return [d["embedding"] for d in data["data"]] if online(cfg) else data["embeddings"]
     except (OSError, KeyError, ValueError) as e:
         print(f"embedding 失敗：{e}")
         return None
@@ -219,11 +252,9 @@ def cosine(a, b):
 
 
 def is_local():
-    """Whether Ollama on this computer is used, so Freminet Chat.exe knows to start it.
-
-    With an online model it still is, for the fallback and the embeddings.
-    """
-    url = local_provider(load_config())["base_url"]
+    """Whether Ollama on this computer is used, so Freminet Chat.exe knows to start it."""
+    cfg = load_config()
+    url = cfg["providers"][cfg["active"]]["base_url"]
     return any(host in url for host in ("://127.0.0.1", "://localhost"))
 
 

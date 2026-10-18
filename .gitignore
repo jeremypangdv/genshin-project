@@ -20,3 +20,6 @@ dist/
 
 # Gemini API key，不能上傳
 config/gemini_key.txt
+
+# 拿 API key 的教學影片：錄到了 key，不上傳
+tutorial video/

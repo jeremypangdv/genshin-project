@@ -199,6 +199,37 @@
   .ask-name button:disabled { background: #b3c5bf; }
   .ask-name .cancel { background: none; color: var(--muted); margin-top: 4px; }
   .ask-name .cancel[hidden], .icon-btn[hidden] { display: none; }
+  /* 用網上模型但還沒有 API key：輸入 key；打開教學時下面列步驟，旁邊放影片 */
+  .ask-key { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px; background: rgba(11,20,26,.45); }
+  .ask-key[hidden], .ask-key .steps[hidden], .ask-key .err[hidden], .ask-key video[hidden] { display: none; }
+  .ask-key .card { width: min(340px, 100%); max-height: calc(100vh - 32px); overflow: auto; background: #fff; border-radius: 14px;
+    box-shadow: 0 8px 28px rgba(11,20,26,.3); }
+  .ask-key .card.open { width: min(900px, 100%); }
+  .ask-key form { width: min(340px, 100%); margin: 0 auto; padding: 22px 20px 18px; text-align: center; }
+  .ask-key p { margin: 0 0 4px; font-size: 16px; }
+  .ask-key small { display: block; color: var(--muted); margin-bottom: 14px; }
+  .ask-key input { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 11px 12px; font: inherit; font-size: 15px; outline: none; background: var(--panel-2); }
+  .ask-key .err { color: var(--error); font-size: 13px; margin-top: 8px; }
+  .ask-key button { width: 100%; margin-top: 12px; padding: 11px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font: inherit; font-size: 15px; }
+  .ask-key button:disabled { background: #b3c5bf; }
+  .ask-key .help { background: var(--panel-2); color: var(--accent-dark); }
+  .ask-key .steps { display: grid; grid-template-columns: 250px 1fr; gap: 20px; align-items: start; padding: 18px 22px 20px;
+    border-top: 1px solid var(--line); font-size: 14px; }
+  .ask-key .steps h3 { margin: 0 0 12px; font-size: 16px; font-weight: 600; }
+  .ask-key ol { margin: 0; padding: 0; list-style: none; counter-reset: step; }
+  .ask-key li { position: relative; margin: 0 -8px 4px; padding: 6px 8px 6px 42px; line-height: 1.5; border-radius: 8px; counter-increment: step; }
+  .ask-key li[data-t] { cursor: var(--cur-click); }
+  .ask-key li[data-t]:hover { background: var(--hover); }
+  .ask-key li.now { background: #e7f8f2; }
+  .ask-key li::before { content: counter(step); position: absolute; left: 8px; top: 6px; width: 24px; height: 24px; border-radius: 50%;
+    background: var(--accent); color: #fff; font-size: 13px; display: grid; place-items: center; }
+  .ask-key li a { color: var(--accent-dark); cursor: var(--cur-click); }
+  .ask-key li b { font-weight: 600; }
+  .ask-key .note { color: var(--muted); font-size: 12.5px; margin: 8px 0 0; }
+  .ask-key video { width: 100%; border-radius: 8px; background: #000; }
+  @media (max-width: 640px) {
+    .ask-key .steps { grid-template-columns: 1fr; }
+  }
   /* 觸控螢幕：沒有滑鼠，按過的按鈕不要一直停在 hover 的顏色 */
   @media (hover: none) {
     html { -webkit-tap-highlight-color: transparent; }
@@ -231,6 +262,33 @@
     <button class="ok" disabled>開始聊天</button>
     <button class="cancel" type="button" hidden>取消</button>
   </form>
+</div>
+
+<div class="ask-key" hidden>
+  <div class="card">
+    <form>
+      <p>輸入 Gemini API key</p>
+      <small>免費的，用你自己的 Google 帳號就能拿到</small>
+      <input placeholder="貼上 API key" autocomplete="off" spellcheck="false">
+      <div class="err" hidden></div>
+      <button class="ok" disabled>確認</button>
+      <button class="help" type="button">怎麼拿 API key？</button>
+    </form>
+    <div class="steps" hidden>
+      <div>
+        <h3>拿 API key 的步驟</h3>
+        <ol>
+          <li data-t="0">打開 <a href="#" data-act="key-page">aistudio.google.com/apikey</a>，用 Google 帳號登入。停在首頁的話，按左下角 <b>Get API key</b></li>
+          <li data-t="4.5">按右上角的 <b>Create API key</b></li>
+          <li data-t="7.5">名字隨便取，專案用預設的就好，按 <b>Create key</b></li>
+          <li data-t="15.5">等它做好，按 <b>Copy key</b> 複製</li>
+          <li>回到這裏，貼到上面的格子，按 <b>確認</b></li>
+        </ol>
+        <p class="note">點步驟可以跳到影片那一段。不用綁信用卡；key 只存在這部電腦，不要傳給別人。</p>
+      </div>
+      <video src="/tutorial.mp4" controls muted loop playsinline preload="metadata"></video>
+    </div>
+  </div>
 </div>
 
 <template id="chat-tpl">
@@ -568,6 +626,53 @@ function askName(changing = false) {
   });
 }
 
+// 用網上模型但還沒有 API key：要輸入，試過能用才存
+function askKey() {
+  const box = $(".ask-key"), card = $(".card", box), form = $("form", box), input = $("input", box),
+    btn = $(".ok", box), err = $(".err", box), steps = $(".steps", box);
+  box.hidden = false;
+  input.oninput = () => { btn.disabled = !input.value.trim(); err.hidden = true; };
+  input.focus();
+  // 教學影片：點步驟跳到那一段，播放時標出現在到哪一步；沒有影片就只列步驟
+  const video = $("video", box), marks = [...box.querySelectorAll("li[data-t]")];
+  video.onerror = () => { video.hidden = true; };
+  video.ontimeupdate = () => {
+    const now = marks.filter(li => +li.dataset.t <= video.currentTime + 0.1).pop();
+    marks.forEach(li => li.classList.toggle("now", li === now));
+  };
+  marks.forEach(li => li.onclick = e => {
+    if (e.target.closest("a")) return;
+    video.currentTime = +li.dataset.t;
+    video.play().catch(() => {});
+  });
+  $(".help", box).onclick = () => {
+    steps.hidden = !steps.hidden;
+    card.classList.toggle("open", !steps.hidden);
+    if (steps.hidden) video.pause(); else video.play().catch(() => {});
+  };
+  $("[data-act=key-page]", box).onclick = e => {
+    e.preventDefault();
+    api("/api/key-page", { method: "POST" }).catch(() => open("https://aistudio.google.com/apikey"));
+  };
+  return new Promise(done => {
+    form.onsubmit = async e => {
+      e.preventDefault();
+      btn.disabled = true;
+      btn.textContent = "連接中…";
+      try {
+        await api("/api/key", { method: "POST", body: JSON.stringify({ key: input.value.trim() }) });
+        box.hidden = true;
+        done();
+      } catch (x) {
+        err.textContent = x.message;
+        err.hidden = false;
+        btn.disabled = false;
+      }
+      btn.textContent = "確認";
+    };
+  });
+}
+
 const who = () => ({ "X-User": encodeURIComponent(userName) });
 
 async function api(path, opts = {}) {
@@ -858,6 +963,7 @@ refreshStatus();
   const s = await api("/api/status").catch(() => ({}));
   state.askName = !!s.ask_name;
   if (state.askName && !userName) await askName();
+  if (s.need_key) { await askKey(); refreshStatus(); }
   // 沒有好友列表，直接打開第一個好友的聊天
   await loadFriends();
   if (state.friends[0]) openChat(state.friends[0]);

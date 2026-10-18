@@ -6,7 +6,6 @@
       "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
       "model": "gemini-3.5-flash-lite",
       "key_file": "config/gemini_key.txt",
-      "fallback": "ollama_8b",
       "daily_limit": 500,
       "max_tokens": 400,
       "temperature": 0.7
@@ -48,5 +47,6 @@
     }
   },
   "history_turns": 20,
-  "embed_model": "qwen3-embedding:0.6b"
+  "embed_model": "gemini-embedding-001",
+  "embed_related": 0.66
 }
