@@ -23,16 +23,16 @@
   - 他會自己選情緒（9 種），用對應的參考音頻念
   - 聊天記錄會保存；吞字會自動重念
   - 2026-10-08：聊天畫面鋪滿整個視窗，不顯示好友列表；聊天背景可以在設定裏切換、下載、上傳（圖放在 `freminet profile/Background/`）；右上角可以隱藏聊天記錄，只看背景圖；菲米尼會像地鼠一樣從輸入欄後面探頭，點他會飄出愛心
-  - 用這部電腦的 `qwen3:8b`（`active` 是 `ollama_8b`），之前是 `qwen3:4b-instruct`
+  - 回覆現在用 Gemini 3.5 Flash Lite 免費 API（2026-10-17 起，2026-10-19 起只用它）；之前用這部的 `qwen3:8b`，更早是 `qwen3:4b-instruct`
   - 2026-10-10：清空聊天記錄會連語音檔一起刪；語音只留最近 50 則，更早的只剩文字，不會越積越大
-- [x] ~~在另一部電腦跑 `qwen3:14b`~~：2026-10-10 決定不用了，就用這部的 `qwen3:8b`（`ollama_8b`）。`server/` 的 notebook 和 `server` 設定先留着
+- [x] ~~在另一部電腦跑 `qwen3:14b`~~：2026-10-10 決定不用了，就用這部的 `qwen3:8b`（`ollama_8b`）。`server/` 的 notebook 還留着，`config/llm.json` 的 `server` 設定 2026-10-19 拿掉了
   - [x] 寫好 `server/install_server.ipynb` 和 `server/start_server.ipynb`（2026-10-07 從 bat 檔改成 notebook）
   - [x] 這部電腦裝好 Tailscale（2026-10-07，這部的 IP 是 `100.90.10.112`）
   - [x] 那部電腦裝好 Tailscale（同一個帳號，IP 是 `100.107.228.94`），已填進 `config/llm.json` 的 `server`
-- [x] 決定用本地模型還是 API（2026-10-10：用本地 `qwen3:8b`）：比較簡報 https://claude.ai/artifact/C4JQrqPKo8T9QSAaTbEwWc （8b / 14b / DeepSeek / Qwen / GPT Luna 的價格和好壞，2026-10-07）
+- [x] 決定用本地模型還是 API（2026-10-10：用本地 `qwen3:8b`；2026-10-17 改用免費的 Gemini API，2026-10-19 拿掉本地模型）：比較簡報 https://claude.ai/artifact/C4JQrqPKo8T9QSAaTbEwWc （8b / 14b / DeepSeek / Qwen / GPT Luna 的價格和好壞，2026-10-07）
 - [x] 給別的電腦用的準備（2026-10-07）
   - GPT-SoVITS 的路徑寫在 `config/tts.json`
-  - `active` 是 `server` 時，`Freminet Chat.exe` 不會開本地 Ollama，那部電腦不用裝
+  - `active` 不是本地的 Ollama 時（現在用 Gemini），`Freminet Chat.exe` 不會開 Ollama，電腦不用裝
   - 沒有 NVIDIA 顯卡就自動改用 CPU（能用但每句要 30 秒以上）
 - [x] 打包給朋友（2026-10-09）：先 `build_exe.bat`，再 `python scripts/make_bundle.py`，做出 `dist/Freminet Chat/`，朋友雙擊 exe 就能用，不用裝任何東西；第一次打開要輸入他自己的 Gemini API key（有步驟和教學影片）
   - 裏面有 GPT-SoVITS（拿掉訓練用的東西，它的 Python 也用來跑聊天程式）和 `tutorial video/`。2026-10-19 起回覆用 Gemini，不再放 Ollama、`qwen3:8b`、`qwen3-embedding:0.6b`（以前用 11435 埠）
@@ -61,7 +61,7 @@
   - 重做 exe、重跑 `make_bundle.py` 更新 `dist/Freminet Chat/`：之前的 exe 和 dist 停在 10/10，沒有關視窗停 Ollama、按話題載入資料和之後的角色修改。PyInstaller 會用 `build/` 的快取不重做，要加 `--clean`；中文輸出在 Git Bash 要設 `PYTHONIOENCODING=utf-8`
   - 2026-10-19 再跑一次 `make_bundle.py`（21.6GB），dist 和專案的程式、角色資料一樣了
   - 2026-10-19 dist 改用 Gemini，但不放 key：朋友打開時跳出輸入 key 的畫面，按「怎麼拿 API key？」旁邊列出步驟（AI Studio 的按鈕名稱是照記憶寫的，還沒對過現在的網頁）。按確認會先向 Google 試 key，能用才存進 `config/gemini_key.txt`，下次不用再輸入；錯的會顯示紅字。用 dist 測過：教學展開、錯的 key 都正常；對的 key 只在 `llm.save_key` 測過，沒在畫面上輸入（不想把自己的 key 存進 dist）
-  - 2026-10-19 拿掉本地模型，只用 Gemini：沒有 key 一定要輸入（沒有跳過）；連不上不再退回 8b，直接顯示錯誤；次數用完上面跳紅色提示、輸入欄鎖住（測過）。記憶的 embedding 改用 `gemini-embedding-001`（不算進每天 500 次，有自己的免費額度），它的相似度比 qwen 高，相關的約 0.68–0.80、不相關的約 0.61–0.63，所以 `embed_related` 設 0.66。dist 不再放 Ollama，exe 也不會開 Ollama；`dist/Freminet Chat/ollama/`（約 6GB）要自己刪。專案的 `config/llm.json` 還留着 `ollama_8b` 這些設定，但 `embed_model` 已經是 Gemini 的，改回本地要一起改
+  - 2026-10-19 拿掉本地模型，只用 Gemini：沒有 key 一定要輸入（沒有跳過）；連不上不再退回 8b，直接顯示錯誤；次數用完上面跳紅色提示、輸入欄鎖住（測過）。記憶的 embedding 改用 `gemini-embedding-001`（不算進每天 500 次，有自己的免費額度），它的相似度比 qwen 高，相關的約 0.68–0.80、不相關的約 0.61–0.63，所以 `embed_related` 設 0.66。dist 不再放 Ollama，exe 也不會開 Ollama；dist 裏舊的 `ollama/`（8.3GB）已經刪了，dist 現在約 12.8GB。`config/llm.json` 的 ollama 設定也拿掉了
   - 2026-10-19 教學加影片：`tutorial video/` 裏的第一個 mp4（`/tutorial.mp4`），放在步驟旁邊；點步驟跳到影片那一段，播放時標出現在到哪一步。步驟照影片改過（Get API key → Create API key → Create key → Copy key）。影片錄到的 key 已經在 AI Studio 刪掉了；`tutorial video/` 沒放進 git
   - 2026-10-19 存着的 key 被刪掉也會叫你重新輸入：開的時候先向 Google 試一次（不算次數），聊天時 Google 說 key 不能用也會跳出輸入畫面。設定（齒輪）裏有「更換 API key」，打開同一個畫面，可以取消。換 key 不影響聊天記錄和記憶（都存在 `chats/`）
 
@@ -256,7 +256,8 @@ python scripts/app.py
 - **跟着滑鼠的菲米尼**：在滑鼠右下角，慢半拍追上去，不擋點擊；滑鼠離開視窗就淡出。指着按鈕這類可以點的東西時換成抱佩伊，指着輸入欄時換成拿書，並移到滑鼠右上角，不擋住打的字。大小改 `app/index.html` 裏 `.buddy` 的 `width`
 - **探頭的菲米尼**：每隔 3–9 秒在輸入欄上面隨機位置出現，待 2.5–5 秒縮回去；點他會馬上躲起來並飄出愛心。大小改 `app/index.html` 裏 `.peek` 的 `width`（改大的話 `.hole` 的 `height` 也要加）
 - 角色的圖片設定在 `scripts/app.py` 的 `FRIENDS`：`image` 頭像、`backgrounds` 背景資料夾、`background` 預設背景、`peek` 探頭 gif、`cursor` 跟着滑鼠的圖、`heart` 愛心
-- **本地測試用 `qwen3:4b-instruct`**（Ollama，2.5GB）。不要用 `qwen3:4b`：它會先「思考」，Ollama 的 OpenAI 介面關不掉，回覆會變成空的
+- 以下是以前用本地模型時的記錄（模型已經刪了）
+- **本地測試用過 `qwen3:4b-instruct`**（Ollama，2.5GB）。不要用 `qwen3:4b`：它會先「思考」，Ollama 的 OpenAI 介面關不掉，回覆會變成空的
 - exe 開 Ollama 時設了 `OLLAMA_KEEP_ALIVE=-1`，LLM 不會閒置 5 分鐘就被卸載（只在 exe 自己開 Ollama 時有效）
 - **記憶**：原文最多傳 `history_turns` 輪（這部 8 輪，server 12 輪）。超過了就把較舊的一半整理進記憶，放在系統提示最後，原文只留最近一半。記憶分兩份：
   - 一次砍一半，不是每則訊息去掉一輪，這樣傳給 LLM 的內容幾則訊息內都不變，Ollama 的快取能命中
@@ -321,6 +322,8 @@ python scripts/app.py
 - 角色像不像主要看提示詞，寫在 `characters/freminet.md`
 
 ### LLM 伺服器
+
+> 2026-10-10 起沒在用（現在用 Gemini API），`config/llm.json` 也沒有 `server` 了。下面留作記錄。
 
 那部電腦只要 `server/` 的兩個 notebook，用 VS Code 打開，由上而下按 ▶ 執行。
 
