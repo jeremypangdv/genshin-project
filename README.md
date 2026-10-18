@@ -230,7 +230,7 @@ python scripts/app.py
 | `characters/freminet-cursor.png` | 跟着滑鼠的小菲米尼，從 `freminet profile/cursor/chibi-character-4x.png` 切掉透明邊、縮成 128px 寬。不放進 git；沒有就不出現 |
 | `characters/freminet-cursor-click.png`、`freminet-cursor-text.png` | 滑鼠指着可以點的東西 / 輸入欄時換成這兩張，從 `freminet profile/cursor/` 的 `hug-character-4x.png`（抱佩伊）和 `book-character-4x.png`（拿書）縮成 128px 寬。不放進 git；沒有就一直用上面那張 |
 | `characters/freminet-heart.png` | 點他飄出來的愛心，從 `freminet profile/interactive asset/Pixel Heart Sprite Sheet 32x32.png` 複製。不放進 git |
-| `config/llm.json` | 用哪個 LLM。現在用 `gemini`（Gemini 3.5 Flash Lite 免費 API，每天 500 次，太平洋時間半夜重置；key 放 `config/gemini_key.txt`，不上傳；沒有或不能用時聊天畫面會叫你輸入，設定（齒輪）裏可以「更換 API key」；`daily_limit` 是每天次數，數在 `chats/api_usage.json`，聊天背景的設定裏看得到，用完了上面跳提示、輸入欄鎖住，到重置時間才能再聊）；`ollama_8b`（這部的 8b）；`ollama_9b`（qwen3.5:9b，試過不用）、`ollama`（4b）、`server`（另一部電腦的 14b，不用了）也還在。`num_ctx` 是上下文長度 |
+| `config/llm.json` | 用哪個 LLM。現在用 `gemini`（Gemini 3.5 Flash Lite 免費 API，每天 500 次，太平洋時間半夜重置；key 放 `config/gemini_key.txt`，不上傳；沒有或不能用時聊天畫面會叫你輸入，設定（齒輪）裏可以「更換 API key」；`daily_limit` 是每天次數，數在 `chats/api_usage.json`，聊天背景的設定裏看得到，用完了上面跳提示、輸入欄鎖住，到重置時間才能再聊）；`embed_model` 是記憶用的 embedding（`gemini-embedding-001`），`embed_related` 是它的相似度門檻。2026-10-19 起只留 `gemini`；以前的 `ollama_8b`、`ollama_9b`、`ollama`（4b）、`server`（14b）設定拿掉了，在 git 記錄裏找得到 |
 | `config/tts.json` | GPT-SoVITS 整合包的路徑，每部電腦不同。路徑用 `/` 分隔 |
 | `characters/freminet.md` | 角色資料，每則訊息都會整份放進系統提示。改完不用重開 app，下一則訊息就會用新的 |
 | `characters/freminet-lore.md` | 詳細資料，每段有「關鍵詞：」一行。最新一則訊息（沒有的話前一則）有關鍵詞，才把那段放進系統提示，最多 `MAX_LORE` 段。改完也不用重開 |
@@ -316,7 +316,7 @@ python scripts/app.py
 - 這部電腦的 6GB 顯存要留給 GPT-SoVITS，所以 LLM 放在另一部電腦（RTX 5060 Laptop 8GB、16GB 記憶體）跑 `qwen3:14b`
   - 14B 角色扮演算及格：聊久了可能忘記角色、對原神設定知道得少
   - 想更好：記憶體加到 32GB，換 30B-A3B 這類 MoE 模型
-- 這部電腦的 `qwen3:4b-instruct` 和 `qwen3:8b` 留着做測試。8b 在這部會有大約 17% 放在 CPU 跑（顯存要分給 GPT-SoVITS），短回覆約 2–4 秒
+- 2026-10-19 這部電腦的 `qwen3:8b`、`qwen3.5:9b`、`qwen3-embedding:0.6b` 已經刪了（`llama3.1:8b` 留着）。以前 8b 在這部會有大約 17% 放在 CPU 跑（顯存要分給 GPT-SoVITS），短回覆約 2–4 秒
 - 8b 的限制：緊張時結巴偏多、偶爾夾英文、很愛照抄提示裏的範例內容（範例寫「看到幽光星星」，他每次都說這句）
 - 角色像不像主要看提示詞，寫在 `characters/freminet.md`
 

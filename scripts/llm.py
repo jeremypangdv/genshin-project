@@ -1,7 +1,7 @@
 """Get a reply from a local model through Ollama, or from an online API like Gemini.
 
-Which one is used is "active" in config/llm.json: "gemini" online (used now),
-or "ollama_8b" / "server" through Ollama, so switching is a config change.
+Which one is used is "active" in config/llm.json: "gemini" online (the only one now).
+A provider without "api": "openai" goes through Ollama (the local models used before).
 An online provider has "api": "openai". With "daily_limit" its requests are counted
 per day (the free quota), and once they run out chatting stops until the quota resets.
 Without a key in "key_file" the chat page asks for one (save_key).
